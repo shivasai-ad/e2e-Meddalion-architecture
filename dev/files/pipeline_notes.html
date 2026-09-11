@@ -1,0 +1,441 @@
+<!doctype html>
+<title>Medallion Pipeline Anatomy</title>
+<style>
+  :root{
+    --paper:#eef0ea; --paper-2:#e4e7de; --ink:#20241f; --ink-soft:#4b5148;
+    --rule:#c9cdc0;
+    --bronze:#a8672f; --bronze-soft:#f0e0cf;
+    --silver:#5c6b7a; --silver-soft:#dde3e8;
+    --gold:#a3821f; --gold-soft:#eee2bb;
+    --stage:#3d6b63; --stage-soft:#d9e6e2;
+    --code-bg:#22261f; --code-ink:#e9e7db; --code-dim:#9aa08d;
+    --font-display:"Source Serif 4", Georgia, serif;
+    --font-body:"Public Sans", -apple-system, Segoe UI, sans-serif;
+    --font-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#1b1e19; --paper-2:#23271f; --ink:#e6e8de; --ink-soft:#aab0a1;
+      --rule:#3a3f34;
+      --bronze:#d4915a; --bronze-soft:#3a2c1c;
+      --silver:#a3b3c2; --silver-soft:#2a3138;
+      --gold:#d9bd5f; --gold-soft:#3a3218;
+      --stage:#7fb0a4; --stage-soft:#20302b;
+      --code-bg:#0f110d; --code-ink:#e9e7db; --code-dim:#7d8471;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#1b1e19; --paper-2:#23271f; --ink:#e6e8de; --ink-soft:#aab0a1;
+    --rule:#3a3f34;
+    --bronze:#d4915a; --bronze-soft:#3a2c1c;
+    --silver:#a3b3c2; --silver-soft:#2a3138;
+    --gold:#d9bd5f; --gold-soft:#3a3218;
+    --stage:#7fb0a4; --stage-soft:#20302b;
+    --code-bg:#0f110d; --code-ink:#e9e7db; --code-dim:#7d8471;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--paper); color:var(--ink); font-family:var(--font-body); line-height:1.6; font-size:16px;}
+  ::selection{background:var(--gold-soft);}
+  h1,h2,h3{font-family:var(--font-display); text-wrap:balance; color:var(--ink); line-height:1.2;}
+  a{color:var(--stage);}
+  code, pre, .mono{font-family:var(--font-mono);}
+  p code, li code{background:var(--paper-2); padding:.1em .35em; border-radius:4px; font-size:.88em; border:1px solid var(--rule);}
+
+  .shell{display:flex; max-width:1180px; margin:0 auto;}
+  nav.toc{
+    width:230px; flex-shrink:0; position:sticky; top:0; align-self:flex-start;
+    height:100vh; overflow-y:auto; padding:2.5rem 1.2rem 2rem 2rem;
+    border-right:1px solid var(--rule);
+  }
+  nav.toc .kicker{font-size:.7rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:1rem;}
+  nav.toc a{display:block; color:var(--ink-soft); text-decoration:none; font-size:.86rem; padding:.32rem 0; border-left:2px solid transparent; padding-left:.7rem;}
+  nav.toc a:hover{color:var(--ink); border-left-color:var(--rule);}
+  nav.toc a.l2{padding-left:1.4rem; font-size:.8rem;}
+
+  main{flex:1; min-width:0; padding:2.5rem 3rem 6rem; max-width:760px;}
+  header.hero{margin-bottom:3rem;}
+  header.hero .kicker{font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; color:var(--stage); font-weight:600;}
+  header.hero h1{font-size:2.6rem; margin:.4rem 0 .6rem;}
+  header.hero p{color:var(--ink-soft); font-size:1.08rem; max-width:56ch;}
+
+  section{margin-bottom:3.2rem; scroll-margin-top:1.5rem;}
+  section > .num{font-family:var(--font-mono); color:var(--ink-soft); font-size:.82rem; letter-spacing:.05em;}
+  section h2{font-size:1.65rem; margin:.2rem 0 1rem;}
+  section h3{font-size:1.15rem; margin:1.6rem 0 .6rem; color:var(--ink);}
+  p{margin:0 0 1rem;}
+  ul,ol{margin:0 0 1rem; padding-left:1.3rem;}
+  li{margin-bottom:.4rem;}
+
+  .layer-tag{display:inline-block; font-family:var(--font-mono); font-size:.72rem; font-weight:600; letter-spacing:.03em; padding:.15em .55em; border-radius:4px; margin-right:.3em;}
+  .tag-stage{background:var(--stage-soft); color:var(--stage);}
+  .tag-bronze{background:var(--bronze-soft); color:var(--bronze);}
+  .tag-silver{background:var(--silver-soft); color:var(--silver);}
+  .tag-gold{background:var(--gold-soft); color:var(--gold);}
+
+  .callout{border-left:3px solid var(--stage); background:var(--paper-2); padding:.9rem 1.1rem; border-radius:0 8px 8px 0; margin:1.2rem 0; font-size:.95rem;}
+  .callout.warn{border-left-color:var(--bronze);}
+  .callout .lbl{font-weight:700; font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft); display:block; margin-bottom:.3rem;}
+
+  pre{background:var(--code-bg); color:var(--code-ink); padding:1rem 1.2rem; border-radius:8px; overflow-x:auto; font-size:.83rem; line-height:1.55; margin:0 0 1.1rem;}
+  pre .c{color:var(--code-dim);}
+  .codecap{font-family:var(--font-mono); font-size:.72rem; color:var(--ink-soft); margin:0 0 .35rem; letter-spacing:.03em;}
+
+  table{width:100%; border-collapse:collapse; margin:0 0 1.3rem; font-size:.92rem;}
+  th,td{text-align:left; padding:.55rem .7rem; border-bottom:1px solid var(--rule); vertical-align:top;}
+  th{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-soft); font-weight:600;}
+  tr:last-child td{border-bottom:none;}
+  .wide{overflow-x:auto;}
+
+  .flow{display:flex; align-items:center; gap:.4rem; margin:1.6rem 0 2rem; flex-wrap:wrap; font-family:var(--font-mono); font-size:.82rem;}
+  .flow .box{border:1.5px solid var(--rule); border-radius:8px; padding:.6rem .8rem; background:var(--paper-2); min-width:88px; text-align:center;}
+  .flow .box b{display:block; font-family:var(--font-body); font-size:.95rem; margin-bottom:.15rem;}
+  .flow .arrow{color:var(--ink-soft);}
+  .flow .box.stage{border-color:var(--stage); }
+  .flow .box.bronze{border-color:var(--bronze); }
+  .flow .box.silver{border-color:var(--silver); }
+  .flow .box.gold{border-color:var(--gold); }
+
+  .op{font-family:var(--font-mono); font-size:.68rem; text-align:center; color:var(--ink-soft); margin-top:.2rem;}
+
+  footer{border-top:1px solid var(--rule); padding-top:1.4rem; color:var(--ink-soft); font-size:.85rem;}
+  @media (max-width: 880px){
+    nav.toc{display:none;}
+    main{padding:2rem 1.3rem 4rem; max-width:100%;}
+    header.hero h1{font-size:2rem;}
+  }
+</style>
+
+<div class="shell">
+  <nav class="toc">
+    <div class="kicker">Contents</div>
+    <a href="#intro">Introduction</a>
+    <a href="#layers">1. The layers &amp; who creates what</a>
+    <a href="#merge">2. How MERGE actually works</a>
+    <a href="#flow-criteria">3. What moves data forward</a>
+    <a href="#hash">4. The hash: a row's fingerprint</a>
+    <a href="#append-overwrite">5. Append vs. overwrite, per layer</a>
+    <a href="#conflicts">6. Real-world conflicts &amp; fixes</a>
+    <a href="#schema-evo">7. Schema evolution &amp; the audit log</a>
+    <a href="#walkthrough">8. Function-by-function walkthrough</a>
+    <a href="#walkthrough" class="l2">ensure_environment</a>
+    <a href="#walkthrough" class="l2">reset_environment</a>
+    <a href="#walkthrough" class="l2">run_bronze</a>
+    <a href="#walkthrough" class="l2">run_silver</a>
+    <a href="#walkthrough" class="l2">run_gold</a>
+    <a href="#cheatsheet">9. Cheat sheet</a>
+  </nav>
+
+  <main>
+    <header class="hero" id="intro">
+      <div class="kicker">pipeline.py, explained from zero</div>
+      <h1>Medallion Pipeline Anatomy</h1>
+      <p>A beginner's walkthrough of <code>common/pipeline.py</code>: where tables get created, where they get merged, how a row earns its "fingerprint," and every real conflict this design had to solve to be safe.</p>
+    </header>
+
+    <section id="what-is">
+      <div class="num">00</div>
+      <h2>What is medallion architecture?</h2>
+      <p>Medallion architecture is just a naming convention for a pipeline that gets progressively cleaner and more useful as data moves through it, in three named stops:</p>
+      <div class="flow">
+        <div class="box stage"><b>Staging</b>raw source</div>
+        <span class="arrow">→</span>
+        <div class="box bronze"><b>Bronze</b>full history</div>
+        <span class="arrow">→</span>
+        <div class="box silver"><b>Silver</b>current &amp; clean</div>
+        <span class="arrow">→</span>
+        <div class="box gold"><b>Gold</b>business answers</div>
+      </div>
+      <ul>
+        <li><span class="layer-tag tag-stage">STAGING</span> the raw source table. In this harness it's a plain Delta table you (or a real CDC connector) write INSERT/UPDATE/DELETE into directly. Nothing here is cleaned up — it's a mirror of "whatever the source system says right now."</li>
+        <li><span class="layer-tag tag-bronze">BRONZE</span> every version of every row, ever. Bronze never forgets — when a row changes, the old version is marked "closed" and a new version is added. This is what lets you answer "what did order ORD-1001 look like last Tuesday?"</li>
+        <li><span class="layer-tag tag-silver">SILVER</span> only the current version of each row, cleaned up (trimmed, upper-cased status, data-quality flags added). No history — just "the truth, right now."</li>
+        <li><span class="layer-tag tag-gold">GOLD</span> business-facing aggregates built from Silver — in this harness, a simple count of orders per status.</li>
+      </ul>
+      <p>The one-line mental model used throughout this document: <strong>Bronze remembers everything, Silver knows only "now," Gold answers a business question about "now."</strong></p>
+    </section>
+
+    <section id="layers">
+      <div class="num">01</div>
+      <h2>The layers &amp; who creates what</h2>
+      <p>Not every layer gets built the same way. This is the single biggest thing to internalize before the MERGE details make sense:</p>
+      <div class="wide">
+      <table>
+        <tr><th>Layer</th><th>First run ever</th><th>Every run after that</th></tr>
+        <tr><td><span class="layer-tag tag-stage">STAGING</span></td><td colspan="2">Never touched by the pipeline at all — it's <code>CREATE TABLE IF NOT EXISTS</code> once, then only you (or CDC) ever write to it.</td></tr>
+        <tr><td><span class="layer-tag tag-bronze">BRONZE</span></td><td colspan="2"><code>CREATE TABLE IF NOT EXISTS</code> once (empty skeleton). After that, <strong>never CREATEd again</strong> — every run does a small <code>MERGE</code> (to close old rows) plus a plain <code>APPEND</code> (to add new/changed rows).</td></tr>
+        <tr><td><span class="layer-tag tag-silver">SILVER</span></td><td><code>CREATE TABLE ... AS SELECT</code> — a genuine full build, because Silver is empty and there's nothing yet to merge against.</td><td>Every run after the first is a <code>MERGE</code> — Silver itself is <strong>never CREATEd again</strong> after that first run.</td></tr>
+        <tr><td><span class="layer-tag tag-gold">GOLD</span></td><td colspan="2"><code>CREATE OR REPLACE TABLE</code> — <strong>every single run</strong>, forever. Gold is small (one row per status), so a full rebuild is cheap and simplest.</td></tr>
+      </table>
+      </div>
+      <div class="callout">
+        <span class="lbl">Why Silver used to be CREATE OR REPLACE too</span>
+        The very first version of this pipeline rebuilt Silver from scratch on every run, the same way Gold still does. That's fine for a five-row demo but wasteful for real data: if Bronze only had 3 changed rows out of a million, a full rebuild still rewrites every single Parquet file. Switching to <code>MERGE</code> for Silver means Delta only touches the files that actually contain a changed row — this is exactly the split the golden-path doc describes as "initial build" vs. "incremental refresh."
+      </div>
+    </section>
+
+    <section id="merge">
+      <div class="num">02</div>
+      <h2>How MERGE actually works — two different jobs</h2>
+      <p>This pipeline uses <code>MERGE INTO</code> twice, for two genuinely different purposes. Confusing the two is the most common beginner mistake, so they're laid out side by side.</p>
+
+      <h3><span class="layer-tag tag-bronze">BRONZE</span> MERGE — "close the old version," nothing else</h3>
+      <p class="codecap">common/pipeline.py :: run_bronze</p>
+      <pre>MERGE INTO bronze AS t
+USING _e2e_close_keys AS s
+ON t.order_id &lt;=&gt; s.order_id AND t._bronze_is_current = TRUE
+WHEN MATCHED THEN UPDATE SET
+    t._bronze_valid_to   = CURRENT_TIMESTAMP(),
+    t._bronze_is_current = FALSE</pre>
+      <p>Notice what's <em>missing</em> from the <code>UPDATE SET</code>: <code>customer_name</code>, <code>status</code>, <code>amount</code> — none of the actual business columns. This MERGE only ever touches two bookkeeping columns. It stamps the old row "closed," full stop. It never rewrites what that row used to say, because that would destroy history. The <em>new</em> version of the row is written separately, as a plain append, right after.</p>
+
+      <h3><span class="layer-tag tag-silver">SILVER</span> MERGE — a full 3-way sync against "current Bronze"</h3>
+      <p class="codecap">common/pipeline.py :: run_silver</p>
+      <pre>MERGE INTO silver AS target
+USING _e2e_silver_src AS source
+ON target.order_id &lt;=&gt; source.order_id
+WHEN MATCHED THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *
+WHEN NOT MATCHED BY SOURCE THEN DELETE</pre>
+      <p>Here all three clauses matter, because Silver's whole job is to mirror "Bronze's current rows" exactly:</p>
+      <ul>
+        <li><strong>MATCHED → UPDATE SET *</strong> — the key exists in both: overwrite every column in Silver with the fresh value from Bronze.</li>
+        <li><strong>NOT MATCHED → INSERT *</strong> — a brand-new key showed up: add it to Silver.</li>
+        <li><strong>NOT MATCHED BY SOURCE → DELETE</strong> — a key used to be in Silver but Bronze no longer marks it current (it was soft-deleted, or its key changed): remove it from Silver. This is safe specifically <em>because</em> <code>_e2e_silver_src</code> is Bronze's full current set, not a partial batch — "missing from source" genuinely means "no longer current," not "just wasn't in today's batch."</li>
+      </ul>
+      <div class="callout warn">
+        <span class="lbl">The gotcha that drove two real bugs (§6)</span>
+        <code>WHEN MATCHED THEN UPDATE SET *</code> requires the source and target to have the exact same set of columns — not a superset, not a subset. If Silver has one column the source view doesn't (or vice versa), Spark throws <code>DELTA_MERGE_UNRESOLVED_EXPRESSION</code> instead of quietly ignoring it. Section 6 covers exactly how this bit the pipeline.
+      </div>
+    </section>
+
+    <section id="flow-criteria">
+      <div class="num">03</div>
+      <h2>What moves data from one layer to the next</h2>
+
+      <h3><span class="layer-tag tag-stage">STAGING</span> → <span class="layer-tag tag-bronze">BRONZE</span></h3>
+      <ol>
+        <li><strong>A real new commit must exist.</strong> <code>run_bronze</code> compares the last processed staging version (the "watermark," stored in <code>job_flags</code>) against staging's latest version. If they're equal, it exits immediately with <code>ran: false</code> — nothing to do.</li>
+        <li><strong>Only real row-level changes count.</strong> Delta's Change Data Feed (CDF) is read for exactly the version range <code>(from_version, to_version]</code>, filtered to <code>insert</code> / <code>update_postimage</code> / <code>delete</code> events only.</li>
+        <li><strong>Multiple changes to the same key collapse to one.</strong> If <code>ORD-1001</code> was updated twice before Bronze got a chance to run, <code>latest_per_key()</code> keeps only the very latest version (see §4).</li>
+        <li><strong>The hash must actually differ.</strong> This is the real gate — see §4: a row whose hash matches the current Bronze row's hash is <code>UNCHANGED</code> and is dropped before either the MERGE or the append runs.</li>
+      </ol>
+
+      <h3><span class="layer-tag tag-bronze">BRONZE</span> → <span class="layer-tag tag-silver">SILVER</span></h3>
+      <ol>
+        <li><strong>Only current rows.</strong> <code>df = spark.table(bronze_fqn).filter(F.col("_bronze_is_current"))</code> — history never leaves Bronze.</li>
+        <li><strong>Every key column must be non-NULL.</strong> A row with a NULL key can never be reliably matched again downstream, so it's filtered out defensively before it can cause a bad join later.</li>
+      </ol>
+
+      <h3><span class="layer-tag tag-silver">SILVER</span> → <span class="layer-tag tag-gold">GOLD</span></h3>
+      <p>No filtering at all — Gold reads every row currently in Silver and aggregates it (<code>GROUP BY status, COUNT(*)</code>). Whatever data-quality work needed doing already happened in Silver.</p>
+    </section>
+
+    <section id="hash">
+      <div class="num">04</div>
+      <h2>The hash: how a row gets its fingerprint</h2>
+      <p>This is the part most likely to confuse a beginner, so it's worth being very explicit: <strong><code>order_id</code> and <code>_bronze_hash</code> are two completely different things.</strong></p>
+      <ul>
+        <li><code>order_id</code> is the <strong>business key</strong> — it identifies <em>which</em> order this is. It comes from the source system.</li>
+        <li><code>_bronze_hash</code> is a <strong>content fingerprint</strong> — it summarizes <em>what the row currently says</em>. It's generated by this pipeline, not the source.</li>
+      </ul>
+      <p class="codecap">common/scd2.py :: row_hash()</p>
+      <pre>def row_hash(business_cols, exclude):
+    parts = [
+        F.coalesce(F.col(c).cast("string"), F.lit(NULL_SENTINEL))
+        for c in sorted(business_cols)
+        if c not in exclude
+    ]
+    return F.md5(F.concat_ws("|", *parts))</pre>
+      <p>Step by step:</p>
+      <ol>
+        <li><strong>Start from every business column</strong> — everything in staging except CDF plumbing columns (<code>_change_type</code>, <code>_commit_version</code>, <code>_commit_timestamp</code>, <code>_rescued_data</code>).</li>
+        <li><strong>Sort the column names alphabetically.</strong> This fixes the order once and for all — the hash of a given set of values will always be computed the same way, even if someone reorders columns in the source table later.</li>
+        <li><strong>Exclude volatile audit columns</strong> — here, just <code>updated_at</code>. It's a timestamp the source stamps on <em>every</em> write, real change or not, so including it in the hash would make "I re-saved this row with no actual change" look identical to a genuine business change. That's exactly the kind of noise the hash is designed to ignore.</li>
+        <li><strong>Cast everything to string, and replace NULL with a private sentinel</strong> (<code>"\x1fNULL"</code>, a control character that can't appear in normal text). Without this, a NULL <code>customer_name</code> and an empty-string <code>customer_name</code> would produce the same hash input and be treated as identical rows — a real correctness bug the sentinel exists to prevent.</li>
+        <li><strong>Join every value with <code>"|"</code></strong> and run it through <code>MD5</code>. The result — one fixed-length string — is <code>_bronze_hash</code>.</li>
+      </ol>
+      <div class="callout">
+        <span class="lbl">Why bother hashing at all?</span>
+        The alternative is comparing every business column of the new row against every business column of the current Bronze row, one by one, for every single row in the batch. Comparing one MD5 string instead is dramatically cheaper at scale, and it's exactly what <code>classify()</code> does: <code>_cur_hash != _bronze_hash</code> is the entire "did anything change?" test.
+      </div>
+    </section>
+
+    <section id="append-overwrite">
+      <div class="num">05</div>
+      <h2>Append vs. overwrite, layer by layer</h2>
+      <div class="wide">
+      <table>
+        <tr><th>Layer</th><th>Behavior</th><th>Why</th></tr>
+        <tr>
+          <td><span class="layer-tag tag-bronze">BRONZE</span></td>
+          <td><strong>Append-only</strong> for real data, plus a narrow 2-column in-place update (only <code>_bronze_valid_to</code> / <code>_bronze_is_current</code>). Business columns of an existing row are <em>never</em> rewritten.</td>
+          <td>This is the entire point of Bronze: it's a permanent, growing history. A row can be closed, never edited.</td>
+        </tr>
+        <tr>
+          <td><span class="layer-tag tag-silver">SILVER</span></td>
+          <td>True <strong>upsert + delete</strong> via MERGE — rows are updated in place, new ones inserted, stale ones removed.</td>
+          <td>Silver represents "right now," not history — when the truth changes, the old value should genuinely disappear, not stick around.</td>
+        </tr>
+        <tr>
+          <td><span class="layer-tag tag-gold">GOLD</span></td>
+          <td>Full <strong>overwrite</strong> (<code>CREATE OR REPLACE TABLE</code>) on every run.</td>
+          <td>Gold here is one tiny aggregate table — cheap to rebuild completely, and simplest to reason about. (The MERGE optimization the doc calls for was scoped to Silver specifically, since that's where the real row-count savings are.)</td>
+        </tr>
+      </table>
+      </div>
+    </section>
+
+    <section id="conflicts">
+      <div class="num">06</div>
+      <h2>Real-world conflicts &amp; how this pipeline solves them</h2>
+
+      <h3>1. Two updates to the same order, one batch</h3>
+      <p>If <code>ORD-1001</code> is updated twice before Bronze gets a chance to run, both changes show up in the same CDF read. Without help, this would try to create two new "CHANGED" rows for the same key.</p>
+      <p class="codecap">common/scd2.py :: latest_per_key()</p>
+      <pre>w = Window.partitionBy(*keys).orderBy(
+    F.col("_commit_version").desc(),
+    F.col(sequence_by).desc_nulls_last(),   <span class="c"># e.g. updated_at</span>
+    F.col("_commit_timestamp").desc(),
+)
+df.withColumn("_rn", F.row_number().over(w)).filter(F.col("_rn") == 1)</pre>
+      <p><strong>Fix:</strong> a ranking window keeps only the single latest change per key. Result: exactly one new Bronze version, not two.</p>
+
+      <h3>2. Replaying the same range twice (retry / re-run)</h3>
+      <p><strong>Fix:</strong> <code>classify()</code> compares each row's hash against Bronze's current hash for that key. If nothing changed, it's tagged <code>UNCHANGED</code> and dropped before the MERGE or the append ever runs — replaying the exact same range is a safe no-op.</p>
+
+      <h3>3. A new column appears upstream (ADD)</h3>
+      <p>Bronze handles this for free: its write is a pure append, so <code>.option("mergeSchema", "true")</code> just works, even on serverless compute. Silver can't use the same trick, because <code>spark.conf.set("...autoMerge.enabled", "true")</code> — the config that would let a <em>MERGE</em> auto-widen its target — is explicitly rejected on serverless (<code>CONFIG_NOT_AVAILABLE.SERVERLESS_DELTA_SCHEMA_AUTO_MERGE_ENABLED</code>).</p>
+      <p><strong>Fix:</strong> before the MERGE runs, an explicit loop adds any column present in the source view but missing from Silver:</p>
+      <pre>for f in df.schema.fields:
+    if f.name not in target_cols:
+        spark.sql(f"ALTER TABLE {silver_fqn} ADD COLUMN `{f.name}` {f.dataType.simpleString()}")</pre>
+
+      <h3>4. A column disappears upstream (DROP)</h3>
+      <p>Confirmed live, not assumed: the moment Silver has a column the source view no longer has, <code>WHEN MATCHED THEN UPDATE SET *</code> throws <code>DELTA_MERGE_UNRESOLVED_EXPRESSION</code> — it does <em>not</em> silently leave the old column stale. Before the fix, any column dropped anywhere upstream would crash <em>every future Silver run</em>, permanently.</p>
+      <p><strong>Fix:</strong> a symmetric loop drops any Silver-only column right before the MERGE:</p>
+      <pre>for col in target_cols - source_cols:
+    spark.sql(f"ALTER TABLE {silver_fqn} DROP COLUMN `{col}`")</pre>
+
+      <h3>5. A join's own scratch column leaking into real data</h3>
+      <p><code>classify()</code> computes <code>_cur_hash</code> purely to compare it against <code>_bronze_hash</code> — it was never meant to leave the function. It was missing from the final <code>.drop(...)</code> call, so it silently rode along through Bronze's <code>mergeSchema</code> append, and from there into Silver via the new ADD-missing-columns loop. Found via <code>DESCRIBE TABLE</code> on the live tables, showing a column that shouldn't have existed.</p>
+      <p><strong>Fix:</strong> added to the drop list — <code>.drop(*[f"_cur_{k}" for k in keys], "_cur_hash")</code>.</p>
+
+      <h3>6. A client changes the primary key</h3>
+      <p>The real danger lives in the MERGE's <code>ON</code> clause, which uses <em>null-safe</em> equality (<code>&lt;=&gt;</code>) so that keys are compared correctly even when one side has legacy NULLs. But that safety only helps when <strong>both</strong> sides are NULL — the instant a new key column is added and every pre-existing "current" row has NULL there while new incoming rows have a real value, <code>NULL &lt;=&gt; 'EU'</code> evaluates to <code>FALSE</code>. Old and new rows silently stop matching: instead of one CHANGED row, you'd quietly get a duplicate "NEW" row and an orphaned, permanently-open old one.</p>
+      <p><strong>Fix:</strong> <code>common/pk_migration.py::check_key_change_readiness()</code> is a read-only pre-flight check — is the candidate key present everywhere, and does it have zero NULLs among current rows? Only flip <code>ENTITY_CONFIG["keys"]</code> once it reports <code>safe: true</code>, after backfilling the new key column through staging as an ordinary UPDATE (never edited directly in Bronze).</p>
+
+      <h3>7. Silver silently drifting out of sync with Bronze</h3>
+      <p><strong>Fix:</strong> the last thing <code>run_silver</code> does is compare row counts and raise immediately if they don't match — a hard stop rather than a silent drift:</p>
+      <pre>if n_silver != n_bronze_current:
+    raise AssertionError(f"Silver/Bronze reconciliation failed: ...")</pre>
+    </section>
+
+    <section id="schema-evo">
+      <div class="num">07</div>
+      <h2>Schema evolution &amp; the audit log</h2>
+      <p>Two separate mechanisms cooperate here — one that lets the schema actually change, and one that writes down that it did.</p>
+      <h3>Letting the schema change</h3>
+      <table>
+        <tr><th>Layer</th><th>Mechanism</th><th>Why this one</th></tr>
+        <tr><td><span class="layer-tag tag-bronze">BRONZE</span></td><td><code>.option("mergeSchema", "true")</code> on the append writer</td><td>Pure appends can auto-widen safely, and this option works even on serverless compute.</td></tr>
+        <tr><td><span class="layer-tag tag-silver">SILVER</span></td><td>Explicit <code>ALTER TABLE ADD/DROP COLUMN</code> loops, run before the MERGE</td><td>A MERGE can't rely on the session-level auto-merge config on serverless, so the target schema has to be made to match the source <em>before</em> the MERGE ever runs.</td></tr>
+      </table>
+      <h3>Writing it down: <code>common/schema_audit.py</code></h3>
+      <p>Every layer's schema gets snapshotted as a simple dictionary — <code>{column_name: type}</code> — and that snapshot is stashed as a JSON string inside the generic <code>job_flags</code> key-value table (reusing the same mechanism the watermark uses, rather than inventing a new control table).</p>
+      <p class="codecap">common/schema_audit.py :: detect_and_log()</p>
+      <pre>current = _current_schema(spark, table_fqn)              <span class="c"># {col: type} right now</span>
+previous = json.loads(job_flags.get(..., key, None))       <span class="c"># {col: type} last time we looked</span>
+
+<span class="c"># diff: anything new → COLUMN_ADDED, anything missing → COLUMN_DROPPED,
+# same name different type → TYPE_CHANGED</span></pre>
+      <p>Every detected change is appended to a real table, <code>schema_audit_log</code>, and the stored snapshot is updated so the next run diffs against today's shape, not the original one. This is called at four points:</p>
+      <ul>
+        <li><span class="layer-tag tag-stage">STAGING</span> — checked at the very <em>start</em> of <code>run_bronze</code>, since the pipeline never writes to staging itself; this is the only place drift there would ever be noticed.</li>
+        <li><span class="layer-tag tag-bronze">BRONZE</span> — checked right after its write, so a <code>mergeSchema</code>-driven widening from that very run is caught immediately, not one run late.</li>
+        <li><span class="layer-tag tag-silver">SILVER</span> — checked right after its MERGE (or CREATE), covering both ADDs and DROPs.</li>
+        <li><span class="layer-tag tag-gold">GOLD</span> — checked right after its rebuild.</li>
+      </ul>
+    </section>
+
+    <section id="walkthrough">
+      <div class="num">08</div>
+      <h2>Function-by-function walkthrough</h2>
+
+      <h3><code>ensure_environment(...)</code></h3>
+      <p>Idempotent setup, called at the top of every <code>run_*</code> function. It never seeds data — that's a separate concern deliberately kept out of this function, so a test can wipe data without re-creating schemas every time.</p>
+      <ul>
+        <li><code>CREATE SCHEMA IF NOT EXISTS</code> for all 5 schemas (stg/bronze/silver/gold/audit).</li>
+        <li><code>CREATE TABLE IF NOT EXISTS</code> for staging and Bronze only — Silver and Gold are deliberately <em>not</em> created here, because their very first build needs real data to select from.</li>
+        <li>Ensures the control table (watermarks) and the audit-log table both exist.</li>
+      </ul>
+
+      <h3><code>reset_environment(...)</code></h3>
+      <p>Empties every table this harness owns — for a genuine clean slate between test runs.</p>
+      <div class="callout warn">
+        <span class="lbl">Why TRUNCATE, not DROP</span>
+        For an <em>external</em> table, <code>DROP TABLE</code> only removes Unity Catalog's metadata entry — the physical Delta files at the fixed S3 location survive untouched. A later <code>CREATE TABLE IF NOT EXISTS</code> at that same path would silently resurrect the old data instead of starting fresh. <code>TRUNCATE</code> empties a table's current data regardless of managed vs. external, so it's the only reset that's actually reliable here. The tradeoff: TRUNCATE clears <em>data</em>, never <em>schema</em> — a column added by <code>ALTER TABLE</code> during a test survives every reset forever, which is why the newer test files clean up their own added columns in a <code>finally</code> block.
+      </div>
+
+      <h3><code>run_bronze(...)</code></h3>
+      <ol>
+        <li><code>ensure_environment(...)</code> — guarantee the skeleton exists.</li>
+        <li><code>schema_audit.detect_and_log(..., "staging_orders", ...)</code> — check staging for drift <em>before</em> anything else happens this run.</li>
+        <li>Compare staging's latest Delta version to the stored watermark. Equal → return immediately, <code>ran: false</code>. This is the idempotency/no-op guarantee.</li>
+        <li><code>scd2.read_changes(...)</code> — pull the CDF slice <code>(from_version, to_version]</code>.</li>
+        <li><code>scd2.latest_per_key(...)</code> — collapse multiple changes to the same key within this batch to just the latest.</li>
+        <li><code>scd2.row_hash(...)</code> — compute <code>_bronze_hash</code> for every incoming row.</li>
+        <li><code>scd2.classify(...)</code> — tag each row NEW / CHANGED / DELETED / UNCHANGED against current Bronze.</li>
+        <li>Split into <code>to_close</code> (CHANGED + DELETED — the old version needs closing) and <code>to_insert</code> (CHANGED + NEW — a fresh current row is needed). Deleted rows are closed but <em>never</em> re-inserted — a soft delete, not a hard delete out of history.</li>
+        <li>If anything needs closing: the "close" MERGE from §2 runs, then <code>logger.log_merge(...)</code> records the operation metrics to <code>audit_log</code>.</li>
+        <li>If anything needs inserting: drop only the known-never-belongs-in-Bronze columns (CDF plumbing + <code>classify()</code>'s temporary <code>_action</code> tag) — <em>not</em> a fixed target-column list, so any genuinely new business column survives and rides through on <code>mergeSchema</code> instead of being silently discarded. Then append with <code>mergeSchema=true</code>.</li>
+        <li><code>control.set_watermark(...)</code> — advance the watermark <strong>only after</strong> both writes above succeed, so a crash mid-run doesn't lose or double-process a range.</li>
+        <li><code>schema_audit.detect_and_log(..., "bronze_orders", ...)</code> — checked <em>after</em> the write, so a <code>mergeSchema</code> widening from this very run is caught immediately.</li>
+      </ol>
+
+      <h3><code>run_silver(...)</code></h3>
+      <ol>
+        <li>Read Bronze, filtered to <code>_bronze_is_current</code>, and to non-NULL keys.</li>
+        <li>Cleansing: <code>status</code> trimmed and upper-cased; <code>_is_missing_customer_name</code> / <code>_is_incomplete</code> data-quality flags computed.</li>
+        <li>Rename Bronze's audit columns into Silver's own naming (<code>_bronze_valid_from</code> → <code>_record_effective_date</code>, etc.) and drop the raw Bronze metadata columns — Silver shouldn't expose Bronze's internal bookkeeping column names directly.</li>
+        <li><code>createOrReplaceTempView("_e2e_silver_src")</code> — this view <em>is</em> "Bronze's current state," the thing both the CREATE and the MERGE below read from.</li>
+        <li><strong>If Silver doesn't exist yet:</strong> <code>CREATE TABLE ... AS SELECT * FROM _e2e_silver_src</code> — the one and only full build.</li>
+        <li><strong>Otherwise:</strong> the ADD-missing-columns loop, then the DROP-stale-columns loop (§6, conflicts 3 &amp; 4), then the 3-way MERGE from §2, then <code>logger.log_merge(...)</code>.</li>
+        <li><code>schema_audit.detect_and_log(..., "silver_orders", ...)</code>.</li>
+        <li>The reconciliation check: <code>silver_rows</code> must equal <code>bronze_current</code>, or raise immediately (§6, conflict 7).</li>
+      </ol>
+
+      <h3><code>run_gold(...)</code></h3>
+      <ol>
+        <li><code>CREATE OR REPLACE TABLE ... AS SELECT status, COUNT(*) AS order_count ... GROUP BY status</code> — the entire aggregation, rebuilt fresh every run.</li>
+        <li><code>logger.audit(...)</code> wraps the write as a <code>FULL_REFRESH</code> action in the audit log.</li>
+        <li><code>schema_audit.detect_and_log(..., "gold_orders_status_summary", ...)</code>.</li>
+        <li>Returns row counts for both Gold and Silver, plus the summed total, so a caller (or a test) can sanity-check the aggregate against the row it was built from.</li>
+      </ol>
+      <p>There is deliberately no separate Gold history table in this harness — the golden-path doc marks that as optional ("build it only if you have a consumer for point-in-time queries"), and Bronze already holds the full history regardless, so one could be added later with zero backfill.</p>
+    </section>
+
+    <section id="cheatsheet">
+      <div class="num">09</div>
+      <h2>Cheat sheet</h2>
+      <div class="wide">
+      <table>
+        <tr><th>Question</th><th>Answer</th></tr>
+        <tr><td>Which layers get <code>CREATE</code>d more than once?</td><td>Only Gold — every single run.</td></tr>
+        <tr><td>Which layer is append-only?</td><td>Bronze (business columns never rewritten; only 2 bookkeeping columns get updated in place).</td></tr>
+        <tr><td>Which layer uses MERGE for a full upsert+delete sync?</td><td>Silver only.</td></tr>
+        <tr><td>What decides if a row is "new data" vs. "nothing changed"?</td><td><code>_bronze_hash</code> compared against the current row's stored hash.</td></tr>
+        <tr><td>What's excluded from the hash, and why?</td><td><code>updated_at</code> — a re-stamped timestamp with no real change shouldn't count as a change.</td></tr>
+        <tr><td>How does a new column survive into Bronze?</td><td><code>mergeSchema=true</code> on the append write.</td></tr>
+        <tr><td>How does a new column survive into Silver?</td><td>An explicit <code>ALTER TABLE ADD COLUMN</code> loop before the MERGE (serverless can't auto-merge a MERGE's schema).</td></tr>
+        <tr><td>What happens if a column disappears upstream?</td><td>Silver drops it too, via a symmetric <code>ALTER TABLE DROP COLUMN</code> loop — otherwise the MERGE crashes forever.</td></tr>
+        <tr><td>Where is every schema change written down?</td><td><code>schema_audit_log</code>, via <code>common/schema_audit.py</code>, checked on staging/bronze/silver/gold every run.</td></tr>
+        <tr><td>What's the actual danger in a primary-key change?</td><td>Null-safe equality (<code>&lt;=&gt;</code>) doesn't help when the old rows have NULL and the new rows have a real value — they silently stop matching. Check readiness first with <code>pk_migration.py</code>.</td></tr>
+      </table>
+      </div>
+    </section>
+
+    <footer>
+      Reference notes for <code>aws-databricks-goldenpath-dev/examples/e2e_medallion_pattern_test_copy/common/pipeline.py</code> — DAA-856.
+    </footer>
+  </main>
+</div>

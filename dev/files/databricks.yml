@@ -1,0 +1,45 @@
+# E2E test harness for the Medallion CDC-Fed pattern (DAA-856).
+#
+# Standalone bundle, deliberately separate from any team's real pipeline
+# bundle (e.g. adi-databricks-engine-payments-dev). See README.md for why.
+
+bundle:
+  name: e2e-medallion-pattern-test-copy
+  # Deploy-lock reads/writes go through workspace/export, which this
+  # network's proxy (Zscaler) blocks with "not allowed to access this file
+  # type". Locking only matters for concurrent deploys by multiple people;
+  # this is a personal single-developer bundle, so it's safe to disable.
+  deployment:
+    lock:
+      enabled: false
+
+variables:
+  catalog:
+    description: >-
+      Unity Catalog catalog this harness reads/writes. Must grant the
+      deploying user CREATE_SCHEMA + CREATE_TABLE. Default is `rls_testing`,
+      a personal sandbox catalog -- see README.md "Why rls_testing" for how
+      that was chosen.
+    default: rls_testing
+  use_external_tables:
+    description: >-
+      "true" = CREATE EXTERNAL TABLE at the golden path's own S3 convention
+      (medallion-cdc-fed-pattern.md); "false" = UC managed tables. See
+      README.md "Why external tables" for how external access was confirmed.
+    default: "true"
+  formatted_bucket:
+    description: S3 bucket backing Staging/Bronze/Silver/audit external tables.
+    default: ad-dna-eu-central-1-dev-datalake-formatted-156041432080
+  published_bucket:
+    description: S3 bucket backing Gold external tables.
+    default: ad-dna-eu-central-1-dev-datalake-published-156041432080
+
+include:
+  - resources/jobs/*.yml
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-445a81b8-2855.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev

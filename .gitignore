@@ -1,0 +1,14 @@
+# Databricks CLI local bundle sync state (machine-local, regenerated on deploy)
+dev/files/.databricks/
+
+# Test-harness local state/artifacts (not part of the pipeline source)
+dev/state/
+dev/artifacts/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS/editor cruft
+.DS_Store

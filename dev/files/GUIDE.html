@@ -1,0 +1,944 @@
+<title>Medallion Pattern Field Guide</title>
+<meta name="color-scheme" content="light dark">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --paper: #f5f6f8;
+    --paper-raised: #ffffff;
+    --ink: #1b1e23;
+    --muted: #5b6472;
+    --line: #dadfe5;
+    --accent: #17656d;
+    --accent-ink: #ffffff;
+    --bronze: #93552e;
+    --silver: #5b6472;
+    --gold: #7a5c0a;
+    --stg: #3c4c62;
+    --ok: #256b41;
+    --ok-bg: #e6f2ea;
+    --warn: #8a6408;
+    --warn-bg: #f7f0dd;
+    --na: #6b7280;
+    --na-bg: #eceef1;
+    --defer: #9c3f34;
+    --defer-bg: #f8e9e7;
+    --mono-bg: #14171b;
+    --mono-ink: #dbe1e7;
+    --mono-line: #2a2f36;
+    --shadow: 0 1px 2px rgba(20, 24, 30, 0.06), 0 8px 24px rgba(20, 24, 30, 0.06);
+    --radius: 10px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14161a;
+      --paper-raised: #1b1e24;
+      --ink: #e7e9ec;
+      --muted: #9aa3af;
+      --line: #2b2f37;
+      --accent: #5cc9c1;
+      --accent-ink: #0b1615;
+      --bronze: #d19669;
+      --silver: #a3acb8;
+      --gold: #dcb454;
+      --stg: #93abcc;
+      --ok: #6bd399;
+      --ok-bg: #16261c;
+      --warn: #e7c168;
+      --warn-bg: #2a2412;
+      --na: #8b93a1;
+      --na-bg: #22252b;
+      --defer: #e6968a;
+      --defer-bg: #2c1a18;
+      --mono-bg: #0c0e11;
+      --mono-ink: #dbe1e7;
+      --mono-line: #262b32;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14161a;
+    --paper-raised: #1b1e24;
+    --ink: #e7e9ec;
+    --muted: #9aa3af;
+    --line: #2b2f37;
+    --accent: #5cc9c1;
+    --accent-ink: #0b1615;
+    --bronze: #d19669;
+    --silver: #a3acb8;
+    --gold: #dcb454;
+    --stg: #93abcc;
+    --ok: #6bd399;
+    --ok-bg: #16261c;
+    --warn: #e7c168;
+    --warn-bg: #2a2412;
+    --na: #8b93a1;
+    --na-bg: #22252b;
+    --defer: #e6968a;
+    --defer-bg: #2c1a18;
+    --mono-bg: #0c0e11;
+    --mono-ink: #dbe1e7;
+    --mono-line: #262b32;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+
+  h1, h2, h3, h4 { font-family: "Fraunces", Georgia, serif; font-weight: 600; text-wrap: balance; color: var(--ink); }
+  a { color: var(--accent); }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace; }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 48px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 28px 120px;
+  }
+  @media (max-width: 920px) {
+    .shell { grid-template-columns: 1fr; }
+    nav.toc { display: none; }
+    .mobile-toc { display: block !important; }
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 28px;
+    align-self: start;
+    font-size: 13.5px;
+  }
+  nav.toc .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; }
+  nav.toc li { counter-increment: toc; margin-bottom: 3px; }
+  nav.toc a {
+    display: flex; gap: 8px;
+    text-decoration: none; color: var(--muted);
+    padding: 5px 8px; border-radius: 7px;
+  }
+  nav.toc a:hover { background: var(--paper-raised); color: var(--ink); }
+  nav.toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    color: var(--accent); flex-shrink: 0; padding-top: 1px;
+  }
+
+  .mobile-toc { display: none; margin-bottom: 28px; }
+  .mobile-toc summary {
+    cursor: pointer; font-weight: 600; padding: 12px 16px;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  .mobile-toc ol { padding: 14px 16px 4px 34px; }
+
+  main { min-width: 0; }
+
+  .kicker {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--accent); font-weight: 600; margin-bottom: 14px;
+  }
+  .kicker .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  h1.title { font-size: clamp(2rem, 4vw, 2.7rem); line-height: 1.12; margin: 0 0 14px; }
+  p.lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; margin: 0 0 8px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 44px; }
+  .pill {
+    font-size: 12.5px; font-family: "IBM Plex Mono", monospace;
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+    color: var(--muted); background: var(--paper-raised);
+  }
+
+  section { margin-top: 76px; scroll-margin-top: 24px; }
+  section > h2 {
+    font-size: 1.65rem; margin: 0 0 6px;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  section > h2 .num { font-family: "IBM Plex Mono", monospace; color: var(--accent); font-size: 1rem; font-weight: 500; }
+  section > .standfirst { color: var(--muted); max-width: 68ch; margin: 0 0 28px; font-size: 1.02rem; }
+
+  p { max-width: 72ch; }
+  section > p, section > ul, section > ol { max-width: 72ch; }
+
+  figure { margin: 28px 0 8px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; max-width: 60ch; }
+
+  .card {
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .card + .card { margin-top: 14px; }
+
+  .layer-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .layer-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+  .layer-badge.stg { color: var(--stg); background: color-mix(in srgb, var(--stg) 14%, transparent); }
+  .layer-badge.stg::before { background: var(--stg); }
+  .layer-badge.bronze { color: var(--bronze); background: color-mix(in srgb, var(--bronze) 16%, transparent); }
+  .layer-badge.bronze::before { background: var(--bronze); }
+  .layer-badge.silver { color: var(--silver); background: color-mix(in srgb, var(--silver) 16%, transparent); }
+  .layer-badge.silver::before { background: var(--silver); }
+  .layer-badge.gold { color: var(--gold); background: color-mix(in srgb, var(--gold) 18%, transparent); }
+  .layer-badge.gold::before { background: var(--gold); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+  td.mono, th.mono { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-raised); }
+  .table-wrap table { min-width: 560px; }
+  .table-wrap.tight table { min-width: 0; }
+
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+  .status.ok { color: var(--ok); background: var(--ok-bg); }
+  .status.warn { color: var(--warn); background: var(--warn-bg); }
+  .status.na { color: var(--na); background: var(--na-bg); }
+  .status.defer { color: var(--defer); background: var(--defer-bg); }
+
+  pre.term {
+    background: var(--mono-bg); color: var(--mono-ink);
+    border-radius: var(--radius); padding: 18px 20px; overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; line-height: 1.65;
+    border: 1px solid var(--mono-line);
+  }
+  pre.term .c1 { color: #7fb88a; } /* pass/green */
+  pre.term .c2 { color: #e0b26a; } /* highlight/amber */
+  pre.term .c3 { color: #8aa6d6; } /* dim blue */
+  pre.term .muted { color: #7c8896; }
+
+  .rule-grid { display: grid; gap: 14px; }
+  .rule {
+    display: grid; grid-template-columns: 34px 1fr; gap: 14px;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px 20px;
+  }
+  .rule .n { font-family: "IBM Plex Mono", monospace; color: var(--accent); font-weight: 600; }
+  .rule h3 { margin: 0 0 4px; font-size: 1.05rem; font-family: "IBM Plex Sans", sans-serif; font-weight: 700; }
+  .rule p { margin: 0 0 10px; color: var(--muted); font-size: 14.5px; }
+  .rule .refs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .refs code { font-size: 12px; background: var(--paper); border: 1px solid var(--line); padding: 2px 7px; border-radius: 6px; }
+
+  .filetree { font-family: "IBM Plex Mono", monospace; font-size: 13.5px; line-height: 1.9; background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 22px; overflow-x: auto; }
+  .filetree .d { color: var(--accent); }
+  .filetree .c { color: var(--muted); }
+
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 20px 0; display: grid; gap: 12px; }
+  .steps li { counter-increment: step; position: relative; padding-left: 44px; }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center; font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 600;
+  }
+  .steps code { background: var(--paper-raised); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; }
+
+  details.testcase { background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+  details.testcase summary { cursor: pointer; padding: 16px 20px; font-weight: 600; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  details.testcase summary::-webkit-details-marker { display: none; }
+  details.testcase summary::after { content: "+"; font-family: "IBM Plex Mono", monospace; color: var(--muted); font-size: 18px; flex-shrink: 0; }
+  details.testcase[open] summary::after { content: "\2212"; }
+  details.testcase .body { padding: 0 20px 20px; }
+  details.testcase .body p { color: var(--muted); font-size: 14.5px; }
+
+  .callout { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--paper-raised)); border-radius: 0 var(--radius) var(--radius) 0; padding: 14px 18px; font-size: 14.5px; }
+  .callout.warn { border-left-color: var(--warn); }
+
+  hr.rule-line { border: none; border-top: 1px solid var(--line); margin: 60px 0 0; }
+  footer { margin-top: 60px; color: var(--muted); font-size: 13px; }
+
+  a.footlink { text-decoration: none; }
+  a.footlink:hover { text-decoration: underline; }
+</style>
+
+<div class="shell">
+  <nav class="toc" aria-label="Table of contents">
+    <div class="eyebrow">Contents</div>
+    <ol>
+      <li><a href="#what-is-it">What is medallion architecture</a></li>
+      <li><a href="#this-harness">This harness, at a glance</a></li>
+      <li><a href="#where">Where every file lives</a></li>
+      <li><a href="#flow">How it runs &mdash; the execution flow</a></li>
+      <li><a href="#run-it">How to run it</a></li>
+      <li><a href="#rules">The 8 architecture rules</a></li>
+      <li><a href="#compliance">Doc compliance scorecard</a></li>
+      <li><a href="#evidence">Proof, from a real run</a></li>
+      <li><a href="#coverage">Mapping back to DAA-856</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <span class="kicker"><span class="dot"></span>DAA-856 &middot; Field guide</span>
+    <h1 class="title">How to test a medallion pipeline, and know it actually held</h1>
+    <p class="lede">
+      A walkthrough of the E2E test harness built for DAA-856 &mdash; what medallion
+      architecture is, what rules it promises to keep, and exactly how this harness
+      catches it breaking one. Every table and log below is real output captured from
+      an actual run, not a mockup.
+    </p>
+    <div class="meta-row">
+      <span class="pill">rls_testing catalog</span>
+      <span class="pill">10/10 tests passing</span>
+      <span class="pill">doc mapped section-by-section</span>
+      <span class="pill">aws-databricks-goldenpath-dev</span>
+      <span class="pill">adi workspace</span>
+    </div>
+
+    <details class="mobile-toc">
+      <summary>Contents</summary>
+      <ol>
+        <li><a href="#what-is-it">What is medallion architecture</a></li>
+        <li><a href="#this-harness">This harness, at a glance</a></li>
+        <li><a href="#where">Where every file lives</a></li>
+        <li><a href="#flow">How it runs &mdash; the execution flow</a></li>
+        <li><a href="#run-it">How to run it</a></li>
+        <li><a href="#rules">The 8 architecture rules</a></li>
+        <li><a href="#compliance">Doc compliance scorecard</a></li>
+        <li><a href="#evidence">Proof, from a real run</a></li>
+        <li><a href="#coverage">Mapping back to DAA-856</a></li>
+      </ol>
+    </details>
+
+    <figure>
+      <svg viewBox="0 0 980 220" role="img" aria-label="Data flow: a source table is mutated, its Change Data Feed is read incrementally into Bronze which keeps full SCD2 history, Silver filters to current rows and cleans them, Gold aggregates a business summary from Silver. Bronze's history is never copied downstream.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+          </marker>
+        </defs>
+        <g font-family="IBM Plex Mono, monospace" font-size="12">
+          <!-- boxes -->
+          <g>
+            <rect x="10" y="70" width="150" height="70" rx="8" fill="none" stroke="var(--stg)" stroke-width="1.6"></rect>
+            <text x="85" y="98" text-anchor="middle" fill="var(--stg)" font-weight="600">STAGING</text>
+            <text x="85" y="116" text-anchor="middle" fill="currentColor" opacity="0.75">orders (CDF on)</text>
+          </g>
+          <g>
+            <rect x="270" y="50" width="160" height="110" rx="8" fill="none" stroke="var(--bronze)" stroke-width="1.6"></rect>
+            <text x="350" y="78" text-anchor="middle" fill="var(--bronze)" font-weight="600">BRONZE</text>
+            <text x="350" y="96" text-anchor="middle" fill="currentColor" opacity="0.75">SCD2 history</text>
+            <text x="350" y="112" text-anchor="middle" fill="currentColor" opacity="0.75">hash + valid_from/to</text>
+            <text x="350" y="128" text-anchor="middle" fill="currentColor" opacity="0.75">is_current flag</text>
+          </g>
+          <g>
+            <rect x="540" y="60" width="160" height="90" rx="8" fill="none" stroke="var(--silver)" stroke-width="1.6"></rect>
+            <text x="620" y="88" text-anchor="middle" fill="var(--silver)" font-weight="600">SILVER</text>
+            <text x="620" y="106" text-anchor="middle" fill="currentColor" opacity="0.75">current rows only</text>
+            <text x="620" y="122" text-anchor="middle" fill="currentColor" opacity="0.75">cleanse + DQ flags</text>
+          </g>
+          <g>
+            <rect x="810" y="65" width="160" height="80" rx="8" fill="none" stroke="var(--gold)" stroke-width="1.6"></rect>
+            <text x="890" y="93" text-anchor="middle" fill="var(--gold)" font-weight="600">GOLD</text>
+            <text x="890" y="111" text-anchor="middle" fill="currentColor" opacity="0.75">status_summary</text>
+            <text x="890" y="127" text-anchor="middle" fill="currentColor" opacity="0.75">(business logic)</text>
+          </g>
+          <!-- arrows -->
+          <line x1="160" y1="105" x2="266" y2="105" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow)"></line>
+          <text x="213" y="98" text-anchor="middle" fill="currentColor" opacity="0.7" font-size="11">CDF read</text>
+          <line x1="430" y1="105" x2="536" y2="105" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow)"></line>
+          <text x="483" y="98" text-anchor="middle" fill="currentColor" opacity="0.7" font-size="11">WHERE current</text>
+          <line x1="700" y1="105" x2="806" y2="105" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow)"></line>
+          <text x="753" y="98" text-anchor="middle" fill="currentColor" opacity="0.7" font-size="11">aggregate</text>
+          <!-- bronze retains history, nothing downstream copies it -->
+          <text x="350" y="184" text-anchor="middle" fill="var(--bronze)" opacity="0.85" font-size="11">history stays here &mdash; Silver/Gold never copy it downstream</text>
+          <!-- mutation loop into staging -->
+          <path d="M85,70 C40,30 130,20 155,66" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#arrow)"></path>
+          <text x="85" y="18" text-anchor="middle" fill="currentColor" opacity="0.7" font-size="11">INSERT / UPDATE / DELETE</text>
+        </g>
+      </svg>
+      <figcaption>Figure 1. The four layers this harness builds. Bronze is the only place SCD2 history lives; Gold currently holds just one business aggregation (<code>orders_status_summary</code>) built from Silver's current state &mdash; no point-in-time history table, since nothing here consumes one (see &sect;5, rule&nbsp;7).</figcaption>
+    </figure>
+
+    <section id="what-is-it">
+      <h2><span class="num">01</span> What is medallion architecture</h2>
+      <p class="standfirst">In plain English, before any Databricks-specific detail.</p>
+
+      <p>
+        A "medallion" pipeline is just a rule about where in a chain of tables each
+        kind of work is allowed to happen. Data comes in messy and raw; it leaves
+        clean and business-ready. In between, it passes through three checkpoints,
+        each with exactly one job:
+      </p>
+
+      <div class="rule-grid">
+        <div class="rule">
+          <div class="n"><span class="layer-badge bronze">Bronze</span></div>
+          <div>
+            <h3>Keep everything, forever, exactly as it changed</h3>
+            <p>Bronze's only responsibility is history. Every version of every
+            row that ever existed stays here &mdash; closed, never deleted, never
+            overwritten. If this layer is lost, the past is unrecoverable.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n"><span class="layer-badge silver">Silver</span></div>
+          <div>
+            <h3>Clean it up, current state only</h3>
+            <p>Silver answers "what does this record look like <em>right now</em>?"
+            &mdash; trimmed, type-cast, flagged where something's missing. No history,
+            no business rules. Just a tidy current snapshot.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n"><span class="layer-badge gold">Gold</span></div>
+          <div>
+            <h3>Answer the business question</h3>
+            <p>Gold is the only layer allowed to contain business logic: counts,
+            KPIs, cross-entity joins. It's rebuilt from Silver/Bronze every run,
+            so a KPI definition can change without ever touching ingestion.</p>
+          </div>
+        </div>
+      </div>
+
+      <p style="margin-top:22px">
+        The reason this discipline matters: without it, teams tend to bury a
+        "current state" filter three notebooks deep, or let a dashboard's business
+        rule silently start living inside the ingestion job. Six months later,
+        nobody can say which layer owns which decision. Medallion architecture is
+        the fix &mdash; a place for every kind of logic, and only one place.
+      </p>
+    </section>
+
+    <section id="this-harness">
+      <h2><span class="num">02</span> This harness, at a glance</h2>
+      <p class="standfirst">What DAA-856 asked for, and the one deliberate choice that shapes everything below.</p>
+
+      <p>
+        <a href="https://alterdomus.atlassian.net/browse/DAA-856">DAA-856</a> asks
+        for end-to-end tests proving a medallion pipeline works: CDC capture,
+        CDF propagation, data quality, audit logging. The pattern itself is
+        documented in this repo at
+        <code>docs/databricks_objects/15_medallion_pattern_rds_to_databricks/medallion-cdc-fed-pattern.md</code>,
+        and it's already implemented for real in the Payments team's pipeline.
+      </p>
+      <p>
+        This harness tests <strong>the pattern</strong>, not Payments' pipeline.
+        It builds its own tiny, synthetic <code>orders</code> entity and its own
+        Bronze/Silver/Gold tables, entirely decoupled from any real team's data.
+        The "source" is a plain Delta table with Change Data Feed switched on
+        &mdash; Delta doesn't care who writes to it, so mutating it directly with
+        SQL produces <em>real</em> CDF events, the same shape a real CDC connector
+        would produce, without needing one.
+      </p>
+
+      <div class="callout">
+        <strong>Why <code>rls_testing</code> as the catalog?</strong> Every
+        domain catalog in this workspace (Payments, FOF, etc.) is
+        Terraform-managed and only grants write access to that domain's own
+        engineers. <code>rls_testing</code> is the one catalog that grants this
+        harness's owner full privileges directly, with no new grant needed, and
+        no relationship to any domain's real data. Swap the <code>catalog</code>
+        bundle variable to point somewhere else later.
+      </div>
+
+      <div class="callout warn">
+        <strong>External tables &mdash; and a lesson in not trusting one check.</strong>
+        The doc's own examples use external Delta tables at an explicit
+        <code>s3://ad-dna-{region}-{env}-datalake-{layer}-{account_id}/</code>
+        location. All 6 tables here now do too. Getting there took two
+        contradictory findings: reading grants directly
+        (<code>databricks grants get external_location ...</code>) showed only
+        the <code>data-engineers</code> group holds
+        <code>CREATE_EXTERNAL_TABLE</code>/<code>WRITE_FILES</code> on these
+        buckets &mdash; this harness's owner isn't a member, so the first
+        conclusion was "managed tables only." An actual
+        <code>CREATE TABLE ... LOCATION ...</code> attempt then succeeded
+        completely. The reconciliation: this workspace's metastore is owned
+        by an account-level <code>metastore-admins</code> group, which has
+        implicit access to every securable in the metastore regardless of
+        that object's own explicit grant list &mdash; invisible to a grants
+        check on the object itself. <strong>Lesson: test the actual
+        operation, don't just read the grant list.</strong>
+      </div>
+    </section>
+
+    <section id="where">
+      <h2><span class="num">03</span> Where every file lives</h2>
+      <p class="standfirst">Two places: on disk in the repo, and mirrored into the Databricks workspace on deploy.</p>
+
+      <p><strong>On disk</strong> (the source of truth, in git):</p>
+      <div class="filetree">
+<span class="c">aws-databricks-goldenpath-dev/examples/e2e_medallion_pattern_test_copy/</span>
+&nbsp;&nbsp;README.md                     <span class="c">&mdash; technical reference: full doc-compliance mapping, how it runs</span>
+&nbsp;&nbsp;GUIDE.html                    <span class="c">&mdash; this file</span>
+&nbsp;&nbsp;databricks.yml                <span class="c">&mdash; bundle config: catalog, use_external_tables, formatted_bucket, published_bucket</span>
+&nbsp;&nbsp;<span class="d">common/</span>                       <span class="c">&mdash; the pipeline logic (importable module)</span>
+&nbsp;&nbsp;&nbsp;&nbsp;config.py                   <span class="c">&mdash; the `orders` entity's schema names, key, hash-exclusion config</span>
+&nbsp;&nbsp;&nbsp;&nbsp;ddl.py                      <span class="c">&mdash; CREATE TABLE SQL, external at the doc's S3 convention</span>
+&nbsp;&nbsp;&nbsp;&nbsp;scd2.py                     <span class="c">&mdash; hash / classify / latest-per-key mechanics</span>
+&nbsp;&nbsp;&nbsp;&nbsp;job_flags.py                <span class="c">&mdash; generic control table (doc's own prescribed reuse)</span>
+&nbsp;&nbsp;&nbsp;&nbsp;control.py                  <span class="c">&mdash; watermark get/set, a thin adapter over job_flags.py</span>
+&nbsp;&nbsp;&nbsp;&nbsp;audit_log.py                <span class="c">&mdash; AuditLogger, logs every Bronze/Silver/Gold write</span>
+&nbsp;&nbsp;&nbsp;&nbsp;pipeline.py                 <span class="c">&mdash; run_bronze / run_silver / run_gold / ensure_environment / reset_environment</span>
+&nbsp;&nbsp;<span class="d">notebooks/</span>                    <span class="c">&mdash; thin wrappers you actually open and run</span>
+&nbsp;&nbsp;&nbsp;&nbsp;00_setup_test_environment.py <span class="c">&mdash; schemas + empty staging table, no seed data</span>
+&nbsp;&nbsp;&nbsp;&nbsp;01_bronze_scd2.py            <span class="c">&mdash; calls run_bronze</span>
+&nbsp;&nbsp;&nbsp;&nbsp;02_silver_conform.py         <span class="c">&mdash; calls run_silver</span>
+&nbsp;&nbsp;&nbsp;&nbsp;03_gold_aggregate.py         <span class="c">&mdash; calls run_gold</span>
+&nbsp;&nbsp;&nbsp;&nbsp;99_run_tests.py              <span class="c">&mdash; installs + runs pytest</span>
+&nbsp;&nbsp;<span class="d">tests/</span>                        <span class="c">&mdash; conftest.py (fixtures) + one file per test case group</span>
+&nbsp;&nbsp;<span class="d">resources/jobs/</span>
+&nbsp;&nbsp;&nbsp;&nbsp;e2e_medallion_pipeline.yml  <span class="c">&mdash; setup &rarr; bronze &rarr; silver &rarr; gold (reset defaults to false)</span>
+&nbsp;&nbsp;&nbsp;&nbsp;e2e_medallion_tests.yml     <span class="c">&mdash; run_tests, on its own</span>
+      </div>
+
+      <p style="margin-top:20px"><strong>In the Databricks workspace</strong> (after <code>databricks bundle deploy</code> &mdash; open this path directly in the Workspace browser to run any notebook by hand):</p>
+      <div class="table-wrap tight">
+        <table>
+          <tr><td class="mono" style="white-space:nowrap">/Workspace/Users/manaswini.gatika@alterdomus.com/</td><td class="mono">.bundle/e2e&#8209;medallion&#8209;pattern&#8209;test/dev/files/</td></tr>
+        </table>
+      </div>
+      <p style="font-size:14.5px;color:var(--muted)">Left sidebar &rarr; <strong>Workspace</strong> &rarr; Users &rarr; your email &rarr; <code>.bundle</code> &rarr; <code>e2e-medallion-pattern-test-copy</code> &rarr; <code>dev</code> &rarr; <code>files</code>.</p>
+    </section>
+
+    <section id="flow">
+      <h2><span class="num">04</span> How it runs &mdash; the execution flow</h2>
+      <p class="standfirst">What runs after what, and which file is responsible for each step.</p>
+
+      <figure>
+        <svg viewBox="0 0 900 300" role="img" aria-label="Execution flow: 00_setup_test_environment creates schemas and an empty staging table; you insert or edit rows by hand; 01_bronze_scd2, 02_silver_conform, and 03_gold_aggregate each call one function in common/pipeline.py in sequence.">
+          <defs>
+            <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+            </marker>
+          </defs>
+          <g font-family="IBM Plex Mono, monospace" font-size="12">
+            <rect x="20" y="15" width="230" height="60" rx="8" fill="none" stroke="var(--stg)" stroke-width="1.6"></rect>
+            <text x="135" y="38" text-anchor="middle" fill="var(--stg)" font-weight="600">00_setup_test_environment</text>
+            <text x="135" y="56" text-anchor="middle" fill="currentColor" opacity="0.75">schemas + empty staging table</text>
+
+            <line x1="135" y1="75" x2="135" y2="105" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow2)"></line>
+            <rect x="20" y="105" width="230" height="55" rx="8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" opacity="0.8"></rect>
+            <text x="135" y="128" text-anchor="middle" opacity="0.85">you: INSERT / UPDATE / DELETE</text>
+            <text x="135" y="146" text-anchor="middle" opacity="0.6">SQL Editor or a notebook cell</text>
+
+            <line x1="135" y1="160" x2="135" y2="190" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow2)"></line>
+            <rect x="20" y="190" width="230" height="60" rx="8" fill="none" stroke="var(--bronze)" stroke-width="1.6"></rect>
+            <text x="135" y="213" text-anchor="middle" fill="var(--bronze)" font-weight="600">01_bronze_scd2</text>
+            <text x="135" y="231" text-anchor="middle" fill="currentColor" opacity="0.75">run_bronze(spark, catalog, ...)</text>
+
+            <line x1="250" y1="220" x2="340" y2="220" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow2)"></line>
+            <rect x="345" y="190" width="230" height="60" rx="8" fill="none" stroke="var(--silver)" stroke-width="1.6"></rect>
+            <text x="460" y="213" text-anchor="middle" fill="var(--silver)" font-weight="600">02_silver_conform</text>
+            <text x="460" y="231" text-anchor="middle" fill="currentColor" opacity="0.75">run_silver(spark, catalog, ...)</text>
+
+            <line x1="575" y1="220" x2="665" y2="220" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow2)"></line>
+            <rect x="670" y="190" width="210" height="60" rx="8" fill="none" stroke="var(--gold)" stroke-width="1.6"></rect>
+            <text x="775" y="213" text-anchor="middle" fill="var(--gold)" font-weight="600">03_gold_aggregate</text>
+            <text x="775" y="231" text-anchor="middle" fill="currentColor" opacity="0.75">run_gold(spark, catalog, ...)</text>
+
+            <text x="450" y="278" text-anchor="middle" opacity="0.65" font-size="11">all four notebooks are thin -- every one just reads widgets, then calls straight into common/pipeline.py</text>
+          </g>
+        </svg>
+        <figcaption>Figure 2. The 4-notebook chain. Everything between "you insert data" and "01_bronze_scd2" is manual and optional to repeat -- the 3 pipeline notebooks always run in this fixed order.</figcaption>
+      </figure>
+
+      <h3 style="font-size:1.05rem">What each file actually is</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">common/config.py</td><td>The one place the <code>orders</code> entity's shape lives: schema names, key column, which column to exclude from the hash, the sequence column.</td></tr>
+            <tr><td class="mono">common/ddl.py</td><td>Builds <code>CREATE TABLE</code> SQL for staging + Bronze, including the <code>LOCATION</code> clause when external tables are on.</td></tr>
+            <tr><td class="mono">common/scd2.py</td><td>Bronze's core mechanics: <code>row_hash()</code>, <code>read_changes()</code> (CDF or full snapshot), <code>latest_per_key()</code>, <code>classify()</code>.</td></tr>
+            <tr><td class="mono">common/job_flags.py</td><td>The doc's own prescribed watermark store &mdash; generic <code>get</code>/<code>set</code> on a <code>(job_name, key, value)</code> table.</td></tr>
+            <tr><td class="mono">common/control.py</td><td>Thin adapter: <code>get_watermark</code>/<code>set_watermark</code> on top of <code>job_flags</code>.</td></tr>
+            <tr><td class="mono">common/audit_log.py</td><td><code>AuditLogger</code> &mdash; logs every write's success/failure/duration, and decomposes a MERGE's metrics into 3 rows.</td></tr>
+            <tr><td class="mono">common/pipeline.py</td><td><strong>The actual pipeline.</strong> <code>ensure_environment()</code>, <code>reset_environment()</code>, <code>run_bronze()</code>, <code>run_silver()</code>, <code>run_gold()</code> &mdash; every notebook and every test calls into this file, nowhere else.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <strong>Why two jobs, not one?</strong> Not a doc requirement &mdash; the doc says nothing about job/test orchestration. It's the fix for a real collision: pytest needs a guaranteed-clean state before every test, but that's exactly wrong for a pipeline run, which should never destroy data you just inserted by hand. <code>e2e_medallion_pipeline</code> (safe, never destroys your data) and <code>e2e_medallion_tests</code> (resets to a known baseline every time, on purpose) are separate precisely so neither behavior leaks into the other. <strong>Never run both at once</strong> &mdash; they hit the same fixed external table locations and will collide.
+      </div>
+    </section>
+
+    <section id="run-it">
+      <h2><span class="num">05</span> How to run it</h2>
+      <p class="standfirst">The commands actually used to build this guide, plus the UI equivalent.</p>
+
+      <p class="standfirst" style="margin-top:-10px">Two separate jobs, deliberately not chained together &mdash; running the pipeline should never accidentally trigger a reset-everything test run as a side effect.</p>
+
+      <h3 style="font-size:1.05rem">From the terminal</h3>
+      <pre class="term"><span class="muted"># one-time: validate, then deploy</span>
+cd examples/e2e_medallion_pattern_test_copy
+databricks bundle validate --profile adi
+databricks bundle deploy -t dev --profile adi
+
+<span class="muted"># run the pipeline on whatever is in staging right now (reset defaults to false)</span>
+databricks bundle run e2e_medallion_pipeline -t dev --profile adi
+
+<span class="muted"># ...or force a clean slate first</span>
+databricks bundle run e2e_medallion_pipeline --params reset=true -t dev --profile adi
+
+<span class="muted"># run the automated test suite (this one resets data as part of testing)</span>
+databricks bundle run e2e_medallion_tests -t dev --profile adi</pre>
+
+      <h3 style="font-size:1.05rem;margin-top:28px">From the Databricks UI</h3>
+      <ol class="steps">
+        <li>Left sidebar &rarr; <strong>Workflows</strong> &rarr; <strong>Jobs</strong> tab</li>
+        <li>Find <strong>"E2E Medallion Pipeline"</strong> (setup &rarr; bronze &rarr; silver &rarr; gold) or <strong>"E2E Medallion Tests"</strong> (just the pytest suite)</li>
+        <li>Click <strong>Run now</strong> (top right)</li>
+        <li>Click into the run &mdash; watch the live DAG. Click any box for that task's live notebook output.</li>
+      </ol>
+
+      <p>Or open any notebook directly under the workspace path above, attach it to serverless compute, and <strong>Run All</strong> &mdash; the best way to poke at one layer in isolation after editing the staging table by hand.</p>
+    </section>
+
+    <section id="rules">
+      <h2><span class="num">06</span> The 8 architecture rules</h2>
+      <p class="standfirst">What "follows the pattern" cashes out to, concretely &mdash; and where each rule is enforced and proven.</p>
+
+      <div class="rule-grid">
+        <div class="rule">
+          <div class="n">01</div>
+          <div>
+            <h3>History lives only in Bronze</h3>
+            <p>Silver and Gold never re-derive it, and neither copies it downstream. A point-in-time projection could be built from Bronze's own columns later with zero backfill &mdash; deferred for now since nothing consumes one (doc: "build it only if you have a consumer").</p>
+            <div class="refs"><code>common/pipeline.py::run_bronze</code><code>test_tc002_004</code></div>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n">02</div>
+          <div>
+            <h3>Change detection is a hash, not a full compare</h3>
+            <p>MD5 over sorted business columns, NULL-safe. Reordering the column list is a breaking change by design.</p>
+            <div class="refs"><code>common/scd2.py::row_hash</code></div>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n">03</div>
+          <div>
+            <h3>CDF drives incremental reads, never a full rescan</h3>
+            <p>Bronze reads exactly <code>table_changes(from_version+1, to_version)</code> &mdash; the slice since the last watermark.</p>
+            <div class="refs"><code>common/scd2.py::read_changes</code></div>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n">04</div>
+          <div>
+            <h3>The watermark advances only after a successful write</h3>
+            <p>If Bronze's MERGE ever failed mid-way, the watermark stays put and the next run safely replays the same range.</p>
+            <div class="refs"><code>common/control.py::set_watermark</code><code>test_tc005</code></div>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n">05</div>
+          <div>
+            <h3>Replaying a run is a no-op</h3>
+            <p>Unchanged rows are classified UNCHANGED and dropped before either write happens.</p>
+            <div class="refs"><code>common/scd2.py::classify</code><code>test_tc005_tc403</code></div>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n">06</div>
+          <div>
+            <h3>Silver is current-state + cleansing only, never business logic</h3>
+            <p><code>WHERE _bronze_is_current = TRUE</code>, then trims, casts, and data-quality flags. Nothing else.</p>
+            <div class="refs"><code>common/pipeline.py::run_silver</code><code>test_tc102</code></div>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n">07</div>
+          <div>
+            <h3>Gold is business logic, rebuilt every run</h3>
+            <p>A full <code>CREATE OR REPLACE</code> each time &mdash; always safely rebuildable, so a KPI definition can change with zero backfill.</p>
+            <div class="refs"><code>common/pipeline.py::run_gold</code><code>test_tc203</code></div>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n">08</div>
+          <div>
+            <h3>Deletes are soft, never physical</h3>
+            <p>A delete closes the current Bronze version &mdash; <code>is_current=false</code> &mdash; and inserts nothing. The row is never removed.</p>
+            <div class="refs"><code>common/pipeline.py::run_bronze</code><code>test_tc002_004</code></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="compliance">
+      <h2><span class="num">07</span> Doc compliance scorecard</h2>
+      <p class="standfirst">An exhaustive, section-by-section comparison against <code>medallion-cdc-fed-pattern.md</code>: for every rule, mechanic, and column the doc specifies, is it here? Full detail in <code>README.md</code> &mdash; this is the presentation-sized version.</p>
+
+      <div class="rule-grid">
+        <div class="rule">
+          <div class="n" style="color:var(--ok)">&check;</div>
+          <div>
+            <h3>Architecture, layer roles, naming convention</h3>
+            <p>4-stage flow, "history lives in exactly one place," every audit column <code>_</code>-prefixed &mdash; all present, exactly as documented.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n" style="color:var(--ok)">&check;</div>
+          <div>
+            <h3>Every column name, all 6 tables</h3>
+            <p>Bronze's 5, Silver's 6, Gold's 1, <code>job_flags</code>' 9, <code>audit_log</code>'s 18, plus Staging's <code>_rescued_data</code> &mdash; verified live via <code>DESCRIBE TABLE</code>, verbatim matches.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n" style="color:var(--ok)">&check;</div>
+          <div>
+            <h3>External tables, at the doc's exact S3 convention</h3>
+            <p><code>formatted_stg</code>/<code>formatted</code>/<code>published</code>/<code>audit</code> prefixes, all 6 tables &mdash; see &sect;2 for how this was actually confirmed.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n" style="color:var(--ok)">&check;</div>
+          <div>
+            <h3>Control table (<code>job_flags</code>) and audit log (<code>audit_log</code>)</h3>
+            <p>Exact DDL, exact API, <code>log_merge()</code> behavior all verified live against real MERGE operations.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n" style="color:var(--warn)">4</div>
+          <div>
+            <h3>Deliberate, documented deviations</h3>
+            <p>Hash excludes <code>updated_at</code>; Bronze writes in two steps (MERGE + append) instead of one atomic <code>UNION ALL MERGE</code>; Silver does <code>SELECT *</code>-then-drop instead of an explicit column list; Silver fully rebuilds every run instead of an incremental MERGE. All four are the <em>same choices the real Payments pipeline makes</em>, inherited on purpose, each with a documented reason &mdash; not oversights.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n" style="color:var(--ok)">&check;</div>
+          <div>
+            <h3><code>TBLPROPERTIES</code>, now complete on every table</h3>
+            <p>Iceberg UniForm, <code>autoOptimize.*</code>, retention durations, <code>enableTypeWidening</code> (Bronze) &mdash; all set and verified live via <code>SHOW TBLPROPERTIES</code>. This closed the single biggest mechanical gap &mdash; but doing it surfaced a real trade-off, below.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="n" style="color:var(--defer)">5</div>
+          <div>
+            <h3>Remaining open gaps</h3>
+            <p>Source's <code>created_at</code> column missing, the schema-change runbook untested, Gold's KPI-example columns (<code>data_quality_pct</code>, <code>latest_data_at</code>) not rolled up, external-table recovery practices (`RESTORE TABLE` drills) untested, and no fallback full-scan MERGE / mass-closure monitoring.</p>
+          </div>
+        </div>
+      </div>
+
+      <p style="margin-top:20px;font-size:14.5px;color:var(--muted)">The full table-by-table, rule-by-rule breakdown &mdash; doc quote, our code, verdict &mdash; lives in <code>README.md</code>'s "Doc compliance" section. This scorecard is the summary for a live walkthrough; that's the reference to point people at afterward.</p>
+
+      <div class="callout warn" style="margin-top:28px">
+        <strong>Decision needed from stakeholders: Deletion Vectors vs. Iceberg UniForm.</strong>
+        <p style="margin:10px 0 12px">
+          Turning on <code>enableIcebergCompatV2</code>/<code>universalFormat.enabledFormats=iceberg</code>
+          (required to close the <code>TBLPROPERTIES</code> gap above) forced <strong>Deletion
+          Vectors off</strong> on every table &mdash; Databricks blocks the two from
+          coexisting (hit this directly: <code>DELTA_ICEBERG_COMPAT_VIOLATION</code>).
+          This matters far more once real, growing data replaces this 5-row sample:
+        </p>
+        <div class="table-wrap tight" style="margin-bottom:12px">
+          <table>
+            <tr><th>Option</th><th>What it costs / buys</th></tr>
+            <tr>
+              <td class="mono">Deletion&nbsp;Vectors&nbsp;ON<br>(Iceberg&nbsp;off)</td>
+              <td>Databricks' own recommended default for MERGE-heavy tables &mdash; a <code>MERGE</code>/<code>UPDATE</code>/<code>DELETE</code> writes a small marker instead of rewriting whole Parquet files. Bronze runs an SCD2 <code>MERGE</code> on <em>every single incremental load, forever</em> &mdash; this is the layer the choice matters most for, and the one growing biggest over time. No external engine (Trino, Snowflake, an Iceberg REST Catalog) can read the table natively as Iceberg.</td>
+            </tr>
+            <tr>
+              <td class="mono">Iceberg&nbsp;UniForm&nbsp;ON<br>(current setting, per the doc)</td>
+              <td>Matches the doc's <code>TBLPROPERTIES</code> literally. Every <code>MERGE</code>/<code>UPDATE</code>/<code>DELETE</code> must rewrite full Parquet files &mdash; negligible on 5 rows, a real and growing cost as Bronze's history accumulates in production. Buys nothing unless something actually reads this table via Iceberg outside Databricks.</td>
+            </tr>
+          </table>
+        </div>
+        <p style="margin:0 0 10px"><strong>The question that actually decides this:</strong> does any consumer of this pipeline's tables need to read them as Iceberg from outside Databricks (Trino, Snowflake, an Iceberg REST Catalog, a data-sharing agreement)? Nothing in DAA-856 or this project has named one so far.</p>
+        <p style="margin:0"><strong>Current state:</strong> Iceberg UniForm is ON (Deletion Vectors OFF), following the doc literally, per explicit direction to implement it this way and raise the trade-off here rather than decide it unilaterally. <strong>This is the one open item worth a direct answer from whoever owns this pattern going into production</strong> &mdash; reversible either way with an <code>ALTER TABLE SET TBLPROPERTIES</code> + (if re-enabling Iceberg later) a <code>REORG TABLE ... APPLY (PURGE)</code>.</p>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <h2><span class="num">08</span> Proof, from a real run</h2>
+      <p class="standfirst">Every block below is genuine output &mdash; captured from job runs on 2026&#8209;08&#8209;25 and 2026&#8209;08&#8209;26 (job_flags/audit_log added later), plus live follow-up queries run directly against the deployed tables.</p>
+
+      <h3 style="font-size:1.1rem">The pytest suite, passing</h3>
+      <pre class="term">collected 10 items
+
+../tests/test_tc001_initial_load.py::test_first_run_loads_all_seed_rows_as_current <span class="c1">PASSED</span> <span class="muted">[ 10%]</span>
+../tests/test_tc002_004_cdc_insert_update_delete.py::test_insert_creates_new_current_row <span class="c1">PASSED</span> <span class="muted">[ 20%]</span>
+../tests/test_tc002_004_cdc_insert_update_delete.py::test_update_closes_old_opens_new_current_version <span class="c1">PASSED</span> <span class="muted">[ 30%]</span>
+../tests/test_tc002_004_cdc_insert_update_delete.py::test_delete_closes_with_no_replacement_row <span class="c1">PASSED</span> <span class="muted">[ 40%]</span>
+../tests/test_tc005_tc403_watermark_idempotent.py::test_replay_with_no_new_changes_is_a_no_op <span class="c1">PASSED</span> <span class="muted">[ 50%]</span>
+../tests/test_tc005_tc403_watermark_idempotent.py::test_replay_after_a_real_change_does_not_duplicate <span class="c1">PASSED</span> <span class="muted">[ 60%]</span>
+../tests/test_tc102_silver_dq_flags.py::test_null_customer_name_is_flagged_incomplete <span class="c1">PASSED</span> <span class="muted">[ 70%]</span>
+../tests/test_tc104_dedup_multiple_changes.py::test_two_rapid_updates_collapse_to_one_new_version <span class="c1">PASSED</span> <span class="muted">[ 80%]</span>
+../tests/test_tc203_gold_reconciliation.py::test_status_summary_counts_reconcile_with_silver <span class="c1">PASSED</span> <span class="muted">[ 90%]</span>
+../tests/test_tc301_full_e2e_flow.py::test_new_order_reaches_gold_end_to_end <span class="c1">PASSED</span> <span class="muted">[100%]</span>
+
+<span class="c1">10 passed</span>, 1 warning in 365.85s (0:06:05)</pre>
+
+      <h3 style="font-size:1.1rem;margin-top:34px">A row's real lifecycle: rule&nbsp;#8 in action</h3>
+      <p>To capture a genuine "closed" row for this guide, <code>ORD-1002</code> was updated directly in staging (status <code>PENDING &rarr; SHIPPED</code>) and just the Bronze task re-run. This is exactly what test_tc002_004 asserts &mdash; here it is against the live table:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>order_id</th><th>status</th><th>valid_from</th><th>valid_to</th><th>is_current</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">ORD-1002</td><td>PENDING</td><td class="mono">08:25:27.480</td><td class="mono">08:29:09.176</td><td class="mono">false</td></tr>
+            <tr><td class="mono">ORD-1002</td><td>SHIPPED</td><td class="mono">08:29:20.080</td><td class="mono">&mdash;</td><td class="mono">true</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:14px;color:var(--muted)">The PENDING row was never touched or deleted &mdash; it was closed. Both rows exist in Bronze right now, permanently.</p>
+
+      <h3 style="font-size:1.1rem;margin-top:34px">Bronze &rarr; Silver &rarr; Gold, end to end</h3>
+      <p>State after the full job run (6 orders: the 5 seeded + <code>ORD-9001</code> inserted by the TC-301 test):</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th><span class="layer-badge bronze">Bronze</span> current rows</th><th>status</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">ORD-1001</td><td>NEW</td></tr>
+            <tr><td class="mono">ORD-1002</td><td>PENDING</td></tr>
+            <tr><td class="mono">ORD-1003</td><td>SHIPPED</td></tr>
+            <tr><td class="mono">ORD-1004</td><td>NEW</td></tr>
+            <tr><td class="mono">ORD-1005</td><td>CANCELLED</td></tr>
+            <tr><td class="mono">ORD-9001</td><td>NEW</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-wrap" style="margin-top:12px">
+        <table>
+          <thead><tr><th><span class="layer-badge gold">Gold</span> orders_status_summary</th><th>order_count</th></tr></thead>
+          <tbody>
+            <tr><td>NEW</td><td class="mono">3</td></tr>
+            <tr><td>PENDING</td><td class="mono">1</td></tr>
+            <tr><td>SHIPPED</td><td class="mono">1</td></tr>
+            <tr><td>CANCELLED</td><td class="mono">1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:14px;color:var(--muted)">3 + 1 + 1 + 1 = 6, matching Silver's 6 current rows exactly &mdash; rule #7's reconciliation, proven, not assumed.</p>
+
+      <h3 style="font-size:1.1rem;margin-top:34px">The watermark itself &mdash; now via <code>job_flags</code></h3>
+      <p>The doc is explicit: <em>"Don't invent a new <code>_ingestion_control</code> table per pipeline. Reuse <code>job_flags.py</code>."</em> This harness originally did exactly that anti-pattern &mdash; fixed now. <code>job_flags</code> is append-only; after an update to <code>ORD-1001</code> and a second Bronze run, the table holds both the original load's values and the new ones, and <code>get()</code> correctly returns the latest by timestamp:</p>
+      <pre class="term">job_name=bronze_orders  key=last_processed_version  value=<span class="c2">1</span>  <span class="muted">(first load)</span>
+job_name=bronze_orders  key=rows_inserted           value=<span class="c2">5</span>  <span class="muted">(first load)</span>
+job_name=bronze_orders  key=last_processed_version  value=<span class="c2">3</span>  <span class="muted">(after the update)</span>
+job_name=bronze_orders  key=rows_closed             value=<span class="c2">1</span>  <span class="muted">(after the update)</span>
+job_name=bronze_orders  key=rows_inserted           value=<span class="c2">1</span>  <span class="muted">(after the update)</span></pre>
+
+      <h3 style="font-size:1.1rem;margin-top:34px">The audit log &mdash; every write, across all three layers</h3>
+      <p>Also newly added (<code>common/audit_log.py</code>), matching the doc's <code>AuditLogger</code> spec exactly, including <code>log_merge()</code> decomposing one MERGE into separate insert/update/delete rows. Real output from updating <code>ORD-1001</code> and re-running the pipeline:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>schema</th><th>table</th><th>action</th><th>row_count</th><th>status</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">bronze</td><td class="mono">orders</td><td>merge_insert</td><td class="mono">0</td><td><span class="status ok">success</span></td></tr>
+            <tr><td class="mono">bronze</td><td class="mono">orders</td><td>merge_update</td><td class="mono">1</td><td><span class="status ok">success</span></td></tr>
+            <tr><td class="mono">bronze</td><td class="mono">orders</td><td>merge_delete</td><td class="mono">0</td><td><span class="status ok">success</span></td></tr>
+            <tr><td class="mono">bronze</td><td class="mono">orders</td><td>insert</td><td class="mono">1</td><td><span class="status ok">success</span></td></tr>
+            <tr><td class="mono">silver</td><td class="mono">orders</td><td>full_refresh</td><td class="mono">5</td><td><span class="status ok">success</span></td></tr>
+            <tr><td class="mono">gold</td><td class="mono">orders_status_summary</td><td>full_refresh</td><td class="mono">4</td><td><span class="status ok">success</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:14px;color:var(--muted)">One MERGE, three audit rows (insert/update/delete broken out separately) &mdash; exactly the doc's stated behavior &mdash; plus the separate append-insert and both full-layer rebuilds, each with duration and actor captured. On any exception, the same logger writes a <code>status='failure'</code> row with the exception type and message instead, then re-raises.</p>
+    </section>
+
+    <section id="coverage">
+      <h2><span class="num">09</span> Mapping back to DAA-856</h2>
+      <p class="standfirst">All 26 test cases from the ticket, honestly scored &mdash; covered by an automated test, implemented but not separately tested, not applicable to this architecture, or deferred.</p>
+
+      <details class="testcase" open>
+        <summary>Category 1 &middot; Source &rarr; Bronze <span class="status ok">5 / 6 covered</span></summary>
+        <div class="body">
+          <div class="table-wrap tight"><table>
+            <tr><td class="mono">TC-001</td><td>Initial full load</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-002</td><td>CDC INSERT</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-003</td><td>CDC UPDATE</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-004</td><td>CDC DELETE</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-005</td><td>Watermarking</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-006</td><td>Schema evolution</td><td><span class="status defer">deferred</span></td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <details class="testcase">
+        <summary>Category 2 &middot; Bronze &rarr; Silver <span class="status warn">2 / 6 covered</span></summary>
+        <div class="body">
+          <div class="table-wrap tight"><table>
+            <tr><td class="mono">TC-101</td><td>CDF reads only changed records</td><td><span class="status warn">implemented, not separately tested</span></td></tr>
+            <tr><td class="mono">TC-102</td><td>Null validation</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-103</td><td>Type casting / transforms</td><td><span class="status warn">implemented, not separately tested</span></td></tr>
+            <tr><td class="mono">TC-104</td><td>Deduplication</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-105</td><td>SCD Type 2 in Silver</td><td><span class="status na">N/A &mdash; SCD2 lives in Bronze by design</span></td></tr>
+            <tr><td class="mono">TC-106</td><td>Schema evolution</td><td><span class="status defer">deferred</span></td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <details class="testcase">
+        <summary>Category 3 &middot; Silver &rarr; Gold <span class="status warn">1 / 5 covered</span></summary>
+        <div class="body">
+          <div class="table-wrap tight"><table>
+            <tr><td class="mono">TC-201</td><td>CDF incremental from Silver</td><td><span class="status na">N/A &mdash; Gold does a full rebuild each run by design</span></td></tr>
+            <tr><td class="mono">TC-202</td><td>Business aggregation logic</td><td><span class="status warn">implemented, not separately tested</span></td></tr>
+            <tr><td class="mono">TC-203</td><td>Row counts reconcile</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-204</td><td>Z-ORDER applied</td><td><span class="status defer">deferred &mdash; not implemented</span></td></tr>
+            <tr><td class="mono">TC-205</td><td>Partition pruning</td><td><span class="status defer">deferred &mdash; not implemented</span></td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <details class="testcase">
+        <summary>Category 4 &middot; End-to-end integration <span class="status warn">1 / 5 covered</span></summary>
+        <div class="body">
+          <div class="table-wrap tight"><table>
+            <tr><td class="mono">TC-301</td><td>Insert at source &rarr; verify in Gold</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-302</td><td>Update propagation</td><td><span class="status warn">demonstrated live this session (see &sect;6), not yet an automated test</span></td></tr>
+            <tr><td class="mono">TC-303</td><td>Soft delete in Gold</td><td><span class="status warn">implemented, not separately tested</span></td></tr>
+            <tr><td class="mono">TC-304</td><td>Lineage tracking</td><td><span class="status defer">deferred &mdash; no formal lineage system</span></td></tr>
+            <tr><td class="mono">TC-305</td><td>Audit logs</td><td><span class="status warn">implemented (<code>common/audit_log.py</code>, see &sect;6), not yet asserted by a dedicated test</span></td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <details class="testcase">
+        <summary>Category 5 &middot; Failure &amp; recovery <span class="status ok">1 / 4 covered</span></summary>
+        <div class="body">
+          <div class="table-wrap tight"><table>
+            <tr><td class="mono">TC-401</td><td>Bronze job failure recovery</td><td><span class="status defer">deferred</span></td></tr>
+            <tr><td class="mono">TC-402</td><td>Silver job failure recovery</td><td><span class="status defer">deferred</span></td></tr>
+            <tr><td class="mono">TC-403</td><td>Idempotency on re-run</td><td><span class="status ok">covered</span></td></tr>
+            <tr><td class="mono">TC-404</td><td>Alerting on failure</td><td><span class="status defer">deferred &mdash; no email configured on this personal job</span></td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <p style="margin-top:24px">
+        <strong>10 covered automatically, 2 not applicable to this architecture,
+        6 implemented but not yet asserted by a dedicated test, 8 deferred.</strong>
+        Great Expectations (named in the ticket's tooling list) was deliberately
+        not introduced this pass &mdash; TC-102's data-quality flag is demonstrated
+        with plain PySpark assertions, and layering GX suites on top later doesn't
+        require touching the pipeline.
+      </p>
+    </section>
+
+    <hr class="rule-line">
+    <footer>
+      Built for <a class="footlink" href="https://alterdomus.atlassian.net/browse/DAA-856">DAA-856</a>
+      &middot; source in <code>aws-databricks-goldenpath-dev/examples/e2e_medallion_pattern_test_copy</code>
+      &middot; full doc-compliance detail in <code>README.md</code>
+      &middot; evidence in &sect;8 captured 2026-08-25/26; jobs split into
+      <code>e2e_medallion_pipeline</code> + <code>e2e_medallion_tests</code> (&sect;4/&sect;5)
+    </footer>
+  </main>
+</div>

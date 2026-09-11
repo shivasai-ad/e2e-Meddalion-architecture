@@ -1,0 +1,2019 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Gold Table Compliance Metadata Configuration
+# ═══════════════════════════════════════════════════════════════════════════
+# Defines compliance metadata for every gold (published) table.
+# Consumed by gold notebooks via the compliance loader in common_utils.
+#
+# ADDING A NEW TABLE:
+#   1. Copy the template block at the bottom of this file
+#   2. Fill in all required fields
+#   3. Raise a PR for review
+#
+# STRUCTURE:
+#   requires_compliance: true  → all fields below are mandatory
+#   requires_compliance: false → table is exempt (provide reason)
+#
+# NOTE: Column-level `entity_id` and `client_id` tags are maintained
+#       separately by the governed tag `custom_claim` process.
+#       They are NOT part of this compliance gate.
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⚠️  YAML SYNTAX RULES (IMPORTANT!)
+# ═══════════════════════════════════════════════════════════════════════════
+# 1. STRING VALUES WITH SPECIAL CHARACTERS must be quoted:
+#    ❌ WRONG:  description: Fund data — structures
+#    ✅ RIGHT:  description: "Fund data — structures"
+#    (Special chars: — – : { } [ ] & * # @ ! | > ' ")
+#
+# 2. INDENTATION must use SPACES (2 or 4), NEVER use tabs:
+#    ❌ WRONG:  [TAB]description: "..."
+#    ✅ RIGHT:  [2 SPACES]description: "..."
+#
+# 3. COLONS (:) IN STRING VALUES need quotes:
+#    ❌ WRONG:  description: data: fund info
+#    ✅ RIGHT:  description: "data: fund info"
+#
+# 4. LISTS must be indented and start with dash-space:
+#    ❌ WRONG:  columns: [col1, col2]
+#    ✅ RIGHT:  columns:
+#               - col1
+#               - col2
+#
+# 5. CHECK CONSTRAINT EXPRESSIONS need quotes:
+#    ❌ WRONG:  check: currency IS NOT NULL AND length(currency) = 3
+#    ✅ RIGHT:  check: "currency IS NOT NULL AND length(currency) = 3"
+#
+# 6. BOOLEANS without quotes are interpreted as boolean (true/false):
+#    ✅ RIGHT:  requires_compliance: true
+#    (Don't quote true/false unless you want the string "true"/"false")
+#
+# If you get a YAML syntax error, check:
+#   → Did you add quotes around strings with special characters?
+#   → Did you use spaces for indentation (not tabs)?
+#   → Did you quote string values with colons?
+# ═══════════════════════════════════════════════════════════════════════════
+
+tables:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SAMPLE PIPELINE TABLES (archived — use real data tables below instead)
+  # ─────────────────────────────────────────────────────────────────────────
+
+#   sample_funds:
+#     requires_compliance: true
+#     description: "Fund master data — fund structures, asset classes, lifecycle attributes, audit trail, and investment strategy classification."
+#     owner: "data-engineers"
+#     tags:
+#       source_system:
+#         - sample_crm
+#       source_squad: fund-ops
+#       dataset: sample_pipeline
+#       data_owner: "Gold Metadata Team"
+#       refresh_cadence: daily
+#       client_id: "sample_client_001"
+
+#     columns:
+#       fund_id:
+#         description: "Unique fund identifier (primary key)"
+#         tags:
+#           sensitivity: internal
+#       fund_name:
+#         description: "Legal name of the fund"
+#         tags:
+#           sensitivity: confidential
+#       asset_class:
+#         description: "Asset class classification (Private Equity, Real Estate, etc.)"
+#         tags:
+#           sensitivity: public
+#       currency:
+#         description: "Base currency ISO 4217 code"
+#         tags:
+#           sensitivity: public
+#       target_size:
+#         description: "Target fund size in base currency"
+#         tags:
+#           sensitivity: confidential
+#       fund_stage:
+#         description: "Current fund lifecycle stage (Open, Closed, Liquidating)"
+#         tags:
+#           sensitivity: internal
+#       inception_date:
+#         description: "Date when the fund was launched"
+#         tags:
+#           sensitivity: internal
+#       client_id:
+#         description: "Client identifier that owns this fund"
+#         tags:
+#           sensitivity: internal
+#       ingestion_date:
+#         description: "Date when this record was ingested into the silver table"
+#         tags:
+#           sensitivity: internal
+
+#     constraints:
+#       - name: pk_fund_id
+#         type: "PRIMARY_KEY"
+#         columns: ["fund_id"]
+#       - name: valid_currency
+#         type: "CHECK"
+#         check: "currency IS NOT NULL AND length(currency) = 3"
+
+#   # ─────────────────────────────────────────────────────────────────────────
+#   # SAMPLE PIPELINE TABLE — investors
+#   # ─────────────────────────────────────────────────────────────────────────
+
+#   sample_investors:
+#     requires_compliance: true
+#     description: "TEST4-Investor master data — investor identity, type, domicile, and AUM for the sample pipeline"
+#     owner: "data-engineers"
+#     tags:
+#       source_system:
+#         - sample_crm
+#         - sample_analytics
+#       source_squad: fund-ops
+#       dataset: sample_pipeline
+#       data_owner: "Gold Metadata Team"
+#       refresh_cadence: daily
+#       client_id: "sample_client_001"
+
+#     columns:
+#       investor_id:
+#         description: "Unique investor identifier (primary key)"
+#         tags:
+#           sensitivity: internal
+#       investor_name:
+#         description: "Legal name of the investor"
+#         tags:
+#           sensitivity: confidential
+#       investor_type:
+#         description: "Investor classification (Institutional, Retail, Family Office)"
+#         tags:
+#           sensitivity: internal
+#       country:
+#         description: "Investor country of domicile"
+#         tags:
+#           sensitivity: internal
+#       aum:
+#         description: "Assets under management for this investor"
+#         tags:
+#           sensitivity: confidential
+#       client_id:
+#         description: "Client identifier that owns this investor record"
+#         tags:
+#           sensitivity: internal
+#       ingestion_date:
+#         description: "Date when this record was ingested into the silver table"
+#         tags:
+#           sensitivity: internal
+
+  # sample_investors:
+  #   requires_compliance: true
+  #   description: "TEST3-Investor master data — investor identity, type, domicile, and AUM for the sample pipeline"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system:
+  #       - sample_crm
+  #       - sample_analytics
+  #     source_squad: fund-ops
+  #     dataset: sample_pipeline
+  #     data_owner: "Gold Metadata Team"
+  #     refresh_cadence: daily
+  #     client_id: "sample_client_001"
+  #
+  #   columns:
+  #     investor_id:
+  #       description: "Unique investor identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     investor_name:
+  #       description: "Legal name of the investor"
+  #       tags:
+  #         sensitivity: confidential
+  #     investor_type:
+  #       description: "Investor classification (Institutional, Retail, Family Office)"
+  #       tags:
+  #         sensitivity: internal
+  #     country:
+  #       description: "Investor country of domicile"
+  #       tags:
+  #         sensitivity: internal
+  #     aum:
+  #       description: "Assets under management for this investor"
+  #       tags:
+  #         sensitivity: confidential
+  #     client_id:
+  #       description: "Client identifier that owns this investor record"
+  #       tags:
+  #         sensitivity: internal
+  #     ingestion_date:
+  #       description: "Date when this record was ingested into the silver table"
+  #       tags:
+  #         sensitivity: internal
+  #
+  #   constraints:
+  #     - name: pk_investor_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["investor_id"]
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SAMPLE PIPELINE TABLE — positions
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # sample_positions:
+  #   requires_compliance: true
+  #   description: "Fund position holdings — instrument-level quantities and market values for the sample pipeline"
+  #   owner: "data-engineers"
+  #   type: "MANAGED"
+  #   tags:
+  #     source_system:
+  #       - sample_crm
+  #       - sample_analytics
+  #       - sample_portfolio
+  #     source_squad: fund-ops
+  #     dataset: sample_pipeline
+  #     data_owner: "Gold Metadata Team"
+  #     refresh_cadence: daily
+  #     client_id: "sample_client_001"
+  #
+  #   columns:
+  #     position_id:
+  #       description: "Unique position identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     fund_id:
+  #       description: "Fund identifier this position belongs to"
+  #       tags:
+  #         sensitivity: internal
+  #     instrument_name:
+  #       description: "Name of the held instrument"
+  #       tags:
+  #         sensitivity: internal
+  #     quantity:
+  #       description: "Quantity of the instrument held"
+  #       tags:
+  #         sensitivity: confidential
+  #     market_value:
+  #       description: "Market value of the position in base currency"
+  #       tags:
+  #         sensitivity: confidential
+  #     as_of_date:
+  #       description: "Date the position values were struck"
+  #       tags:
+  #         sensitivity: internal
+  #     client_id:
+  #       description: "Client identifier that owns this position record"
+  #       tags:
+  #         sensitivity: internal
+  #     ingestion_date:
+  #       description: "Date when this record was ingested into the silver table"
+  #       tags:
+  #         sensitivity: internal
+  #     _gold_refreshed_at:
+  #       description: "Timestamp when this Gold table was last rebuilt"
+  #       tags:
+  #         sensitivity: internal
+  #
+  #   constraints:
+  #     - name: pk_position_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["position_id"]
+  #     - name: valid_quantity
+  #       type: "CHECK"
+  #       check: "quantity IS NOT NULL AND quantity >= 0"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SAMPLE PIPELINE TABLE — transactions
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # sample_transactions:
+  #   requires_compliance: true
+  #   description: "TEST1-Fund transaction records — subscriptions and redemptions linking funds and investors for the sample pipeline"
+  #   owner: "data-engineers"
+  #   type: "MANAGED"
+  #   tags:
+  #     source_system:
+  #       - sample_transactions_system
+  #       - sample_analytics
+  #     source_squad: fund-ops
+  #     dataset: sample_pipeline
+  #     data_owner: "Gold Metadata Team"
+  #     refresh_cadence: daily
+  #     client_id: "sample_client_001"
+  #
+  #   columns:
+  #     transaction_id:
+  #       description: "Unique transaction identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     fund_id:
+  #       description: "Fund identifier this transaction belongs to"
+  #       tags:
+  #         sensitivity: internal
+  #     investor_id:
+  #       description: "Investor identifier that initiated this transaction"
+  #       tags:
+  #         sensitivity: internal
+  #     transaction_type:
+  #       description: "Type of transaction (Subscription or Redemption)"
+  #       tags:
+  #         sensitivity: confidential
+  #     amount:
+  #       description: "Transaction amount in the transaction currency"
+  #       tags:
+  #         sensitivity: confidential
+  #     currency:
+  #       description: "Transaction currency ISO 4217 code"
+  #       tags:
+  #         sensitivity: public
+  #     transaction_date:
+  #       description: "Date the transaction was executed"
+  #       tags:
+  #         sensitivity: internal
+  #     client_id:
+  #       description: "Client identifier that owns this transaction record"
+  #       tags:
+  #         sensitivity: internal
+  #     ingestion_date:
+  #       description: "Date when this record was ingested into the silver table"
+  #       tags:
+  #         sensitivity: internal
+  #     _gold_refreshed_at:
+  #       description: "Timestamp when this Gold table was last rebuilt"
+  #       tags:
+  #         sensitivity: internal
+  #
+  #   constraints:
+  #     - name: pk_transaction_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["transaction_id"]
+  #     - name: valid_amount
+  #       type: "CHECK"
+  #       check: "amount IS NOT NULL AND amount > 0"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SAMPLE PIPELINE TABLE — orders
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # sample_orders:
+  #   requires_compliance: true
+  #   description: "Test1-Order records — customer orders with order status, amounts, and dates for the sample pipeline"
+  #   owner: "data-engineers"
+  #   type: "MANAGED"
+  #   tags:
+  #     source_system: sample_orders_system
+  #     source_squad: fund-ops
+  #     dataset: sample_pipeline
+  #     data_owner: "Gold Metadata Team"
+  #     refresh_cadence: daily
+  #     client_id: "sample_client_001"
+  #
+  #   columns:
+  #     order_id:
+  #       description: "Unique order identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     customer_id:
+  #       description: "Customer identifier that placed this order"
+  #       tags:
+  #         sensitivity: internal
+  #     order_date:
+  #       description: "Date the order was placed"
+  #       tags:
+  #         sensitivity: internal
+  #     order_amount:
+  #       description: "Order amount in the order currency"
+  #       tags:
+  #         sensitivity: confidential
+  #     currency:
+  #       description: "Order currency ISO 4217 code"
+  #       tags:
+  #         sensitivity: public
+  #     status:
+  #       description: "Order status (Pending, Confirmed, Shipped, Delivered, Cancelled)"
+  #       tags:
+  #         sensitivity: internal
+  #     client_id:
+  #       description: "Client identifier that owns this order record"
+  #       tags:
+  #         sensitivity: internal
+  #     ingestion_date:
+  #       description: "Date when this record was ingested into the silver table"
+  #       tags:
+  #         sensitivity: internal
+  #     _gold_refreshed_at:
+  #       description: "Timestamp when this Gold table was last rebuilt"
+  #       tags:
+  #         sensitivity: internal
+  #
+  #   constraints:
+  #     - name: pk_order_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["order_id"]
+  #     - name: valid_order_amount
+  #       type: "CHECK"
+  #       check: "order_amount IS NOT NULL AND order_amount > 0"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SAMPLE PIPELINE TABLE — customers
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # sample_customers:
+  #   requires_compliance: true
+  #   description: "Customer master data — customer identity, contact info, country, spending patterns for the sample pipeline"
+  #   owner: "data-engineers"
+  #   type: "MANAGED"
+  #   tags:
+  #     source_system:
+  #       - sample_crm
+  #       - sample_analytics
+  #     source_squad: fund-ops
+  #     dataset: sample_pipeline
+  #     data_owner: "Gold Metadata Team"
+  #     refresh_cadence: daily
+  #     client_id: "sample_client_001"
+  #
+  #   columns:
+  #     customer_id:
+  #       description: "Unique customer identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     customer_name:
+  #       description: "Legal name of the customer"
+  #       tags:
+  #         sensitivity: confidential
+  #     email:
+  #       description: "Customer email address"
+  #       tags:
+  #         sensitivity: confidential
+  #     country:
+  #       description: "Customer country of residence"
+  #       tags:
+  #         sensitivity: internal
+  #     phone:
+  #       description: "Customer phone number"
+  #       tags:
+  #         sensitivity: confidential
+  #     signup_date:
+  #       description: "Date when the customer signed up"
+  #       tags:
+  #         sensitivity: internal
+  #     spending_amount:
+  #       description: "Total spending amount for this customer"
+  #       tags:
+  #         sensitivity: confidential
+  #     client_id:
+  #       description: "Client identifier that owns this customer record"
+  #       tags:
+  #         sensitivity: internal
+  #     ingestion_date:
+  #       description: "Date when this record was ingested into the silver table"
+  #       tags:
+  #         sensitivity: internal
+  #     _gold_refreshed_at:
+  #       description: "Timestamp when this Gold table was last rebuilt"
+  #       tags:
+  #         sensitivity: internal
+  #
+  #   constraints:
+  #     - name: pk_customer_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["customer_id"]
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # REAL DATA TABLES (from rls_testing.ad_published catalog)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  orders:
+    requires_compliance: true
+    description: "Order master data — order identifiers, customer information, status, and amounts"
+    owner: "data-engineers"
+    tags:
+      source_system: "orders_system"
+      source_squad: "data-team"
+      dataset: "orders"
+      data_owner: "Sales Operations"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      order_id:
+        type: STRING
+        description: "Unique order identifier (primary key)"
+        tags:
+          sensitivity: internal
+      customer_name:
+        type: STRING
+        description: "Customer name for this order"
+        tags:
+          sensitivity: public
+      status:
+        type: STRING
+        description: "Order status (pending, completed, refunded)"
+        tags:
+          sensitivity: public
+      amount:
+        type: DOUBLE
+        description: "Order amount in base currency"
+        tags:
+          sensitivity: confidential
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_order_id
+        type: "PRIMARY_KEY"
+        columns: ["order_id"]
+
+  asset:
+    requires_compliance: true
+    description: "Asset master data — asset identifiers, names, types, and investment characteristics"
+    owner: "data-engineers"
+    tags:
+      source_system: "asset_master"
+      source_squad: "data-team"
+      dataset: "asset_master"
+      data_owner: "Investment Operations"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      entity_master_asset_id:
+        type: STRING
+        description: "Master data entity identifier for asset (primary key)"
+        tags:
+          sensitivity: internal
+      asset_name:
+        type: STRING
+        description: "Asset name"
+        tags:
+          sensitivity: public
+      asset_type:
+        type: STRING
+        description: "Classification of asset type"
+        tags:
+          sensitivity: public
+      currency:
+        type: STRING
+        description: "Primary currency for asset valuation"
+        tags:
+          sensitivity: public
+      status:
+        type: STRING
+        description: "Current status of the asset"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_asset_id
+        type: "PRIMARY_KEY"
+        columns: ["entity_master_asset_id"]
+
+  document:
+    requires_compliance: true
+    description: "Document master data — document identifiers, metadata, and tracking information"
+    owner: "data-engineers"
+    tags:
+      source_system: "document_management"
+      source_squad: "data-team"
+      dataset: "documents"
+      data_owner: "Operations"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      document_id:
+        type: STRING
+        description: "Unique document identifier (primary key)"
+        tags:
+          sensitivity: internal
+      original_file_name:
+        type: STRING
+        description: "Original filename of the document"
+        tags:
+          sensitivity: public
+      classification:
+        type: STRING
+        description: "Document classification level or type"
+        tags:
+          sensitivity: public
+      document_received_date:
+        type: DATE
+        description: "Date document was received"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_document_id
+        type: "PRIMARY_KEY"
+        columns: ["document_id"]
+
+  document_banking:
+    requires_compliance: true
+    description: "Banking information from documents — beneficiary and bank account details"
+    owner: "data-engineers"
+    tags:
+      source_system: "banking_extraction"
+      source_squad: "data-team"
+      dataset: "banking_details"
+      data_owner: "Finance Operations"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      document_id:
+        type: STRING
+        description: "Reference to source document (primary key)"
+        tags:
+          sensitivity: internal
+      beneficiary_bank_name:
+        type: STRING
+        description: "Name of beneficiary bank"
+        tags:
+          sensitivity: confidential
+      beneficiary_account_name:
+        type: STRING
+        description: "Name of beneficiary account"
+        tags:
+          sensitivity: confidential
+      bank_location:
+        type: STRING
+        description: "Geographic location of primary bank"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_document_banking_id
+        type: "PRIMARY_KEY"
+        columns: ["document_id"]
+
+  owner:
+    requires_compliance: true
+    description: "Owner master data — limited partners, funds, and investor entities"
+    owner: "data-engineers"
+    tags:
+      source_system: "owner_master"
+      source_squad: "data-team"
+      dataset: "owner_master"
+      data_owner: "Investor Relations"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      entity_master_owner_id:
+        type: STRING
+        description: "Master data entity identifier for owner (primary key)"
+        tags:
+          sensitivity: internal
+      owner_name:
+        type: STRING
+        description: "Legal name of owner entity"
+        tags:
+          sensitivity: public
+      owner_type:
+        type: STRING
+        description: "Type of owner entity (Individual, Corporation, Fund)"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_owner_id
+        type: "PRIMARY_KEY"
+        columns: ["entity_master_owner_id"]
+
+  performance_metric:
+    requires_compliance: true
+    description: "Performance metrics — KPIs and measurements for positions and assets"
+    owner: "data-engineers"
+    tags:
+      source_system: "performance_analytics"
+      source_squad: "data-team"
+      dataset: "performance_metrics"
+      data_owner: "Analytics Team"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      performance_metric_id:
+        type: STRING
+        description: "Unique metric record identifier (primary key)"
+        tags:
+          sensitivity: internal
+      metric_name:
+        type: STRING
+        description: "Name of performance metric (IRR, MOIC)"
+        tags:
+          sensitivity: public
+      period_type:
+        type: STRING
+        description: "Type of period (Monthly, Quarterly, Annual)"
+        tags:
+          sensitivity: public
+      metric_value:
+        type: DOUBLE
+        description: "Measured value of performance metric"
+        tags:
+          sensitivity: confidential
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_performance_metric_id
+        type: "PRIMARY_KEY"
+        columns: ["performance_metric_id"]
+
+  position:
+    requires_compliance: true
+    description: "Position data — LP holdings, commitments, and investment positions"
+    owner: "data-engineers"
+    tags:
+      source_system: "position_master"
+      source_squad: "data-team"
+      dataset: "positions"
+      data_owner: "Portfolio Management"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      entity_master_position_id:
+        type: STRING
+        description: "Master data entity identifier for position (primary key)"
+        tags:
+          sensitivity: internal
+      owner_id:
+        type: STRING
+        description: "Reference to owner entity"
+        tags:
+          sensitivity: internal
+      asset_id:
+        type: STRING
+        description: "Reference to asset entity"
+        tags:
+          sensitivity: internal
+      status:
+        type: STRING
+        description: "Status of position (active, inactive, closed)"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_position_id
+        type: "PRIMARY_KEY"
+        columns: ["entity_master_position_id"]
+
+  ref_metric:
+    requires_compliance: true
+    description: "Reference metric definitions — metric metadata and configuration"
+    owner: "data-engineers"
+    tags:
+      source_system: "reference_data"
+      source_squad: "data-team"
+      dataset: "metric_definitions"
+      data_owner: "Analytics Team"
+      refresh_cadence: weekly
+      client_id: "default_client"
+    columns:
+      metric_name:
+        type: STRING
+        description: "Unique metric name identifier (primary key)"
+        tags:
+          sensitivity: public
+      display_name:
+        type: STRING
+        description: "Display name for metric in user interfaces"
+        tags:
+          sensitivity: public
+      category:
+        type: STRING
+        description: "Category or grouping of metric"
+        tags:
+          sensitivity: public
+      format_type:
+        type: STRING
+        description: "Format type for metric values (Percentage, Currency, Decimal)"
+        tags:
+          sensitivity: public
+      is_active:
+        type: BOOLEAN
+        description: "Whether metric is currently active"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_metric_name
+        type: "PRIMARY_KEY"
+        columns: ["metric_name"]
+
+  ref_transaction_type:
+    requires_compliance: true
+    description: "Reference transaction type definitions — transaction classification and rules"
+    owner: "data-engineers"
+    tags:
+      source_system: "reference_data"
+      source_squad: "data-team"
+      dataset: "transaction_types"
+      data_owner: "Operations"
+      refresh_cadence: weekly
+      client_id: "default_client"
+    columns:
+      transaction_type:
+        type: STRING
+        description: "Unique transaction type identifier (primary key)"
+        tags:
+          sensitivity: public
+      display_name:
+        type: STRING
+        description: "Display name for transaction type"
+        tags:
+          sensitivity: public
+      category:
+        type: STRING
+        description: "High-level category of transaction (Cash Flow, Adjustment)"
+        tags:
+          sensitivity: public
+      subcategory:
+        type: STRING
+        description: "Subcategory for more detailed classification"
+        tags:
+          sensitivity: public
+      is_active:
+        type: BOOLEAN
+        description: "Whether transaction type is currently active"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_transaction_type
+        type: "PRIMARY_KEY"
+        columns: ["transaction_type"]
+
+  transaction:
+    requires_compliance: true
+    description: "Transaction data — investment cash flows, distributions, and adjustments"
+    owner: "data-engineers"
+    tags:
+      source_system: "transaction_ledger"
+      source_squad: "data-team"
+      dataset: "transactions"
+      data_owner: "Finance Operations"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      transaction_id:
+        type: STRING
+        description: "Unique transaction identifier (primary key)"
+        tags:
+          sensitivity: internal
+      position_id:
+        type: STRING
+        description: "Reference to position entity"
+        tags:
+          sensitivity: internal
+      transaction_type:
+        type: STRING
+        description: "Type of transaction (Capital Call, Distribution)"
+        tags:
+          sensitivity: public
+      amount:
+        type: DOUBLE
+        description: "Transaction amount"
+        tags:
+          sensitivity: confidential
+      currency:
+        type: STRING
+        description: "Currency of transaction amount"
+        tags:
+          sensitivity: public
+      trade_date:
+        type: DATE
+        description: "Date of transaction trade or execution"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_transaction_id
+        type: "PRIMARY_KEY"
+        columns: ["transaction_id"]
+
+  # asset:
+  #   requires_compliance: true
+  #   description: "Asset master data — asset identifiers, names, types, and investment characteristics"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "asset_master"
+  #     source_squad: "data-team"
+  #     dataset: "asset_master"
+  #     data_owner: "Investment Operations"
+  #     refresh_cadence: daily
+  #     client_id: "default_client"
+  #   columns:
+  #     asset_id:
+  #       description: "Unique asset identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_asset_id:
+  #       description: "Master data entity identifier for asset"
+  #       tags:
+  #         sensitivity: internal
+  #     asset_name:
+  #       description: "Asset name"
+  #       tags:
+  #         sensitivity: public
+  #     asset_display_name:
+  #       description: "Display name for asset in user interfaces"
+  #       tags:
+  #         sensitivity: public
+  #     asset_type:
+  #       description: "Classification of asset type (Fund, Company, Security)"
+  #       tags:
+  #         sensitivity: public
+  #     parent_asset_id:
+  #       description: "Parent asset identifier for hierarchical relationships"
+  #       tags:
+  #         sensitivity: internal
+  #     hierarchy_level:
+  #       description: "Asset hierarchy level in the investment structure"
+  #       tags:
+  #         sensitivity: internal
+  #     currency:
+  #       description: "Primary currency for asset valuation"
+  #       tags:
+  #         sensitivity: public
+  #     fund_size:
+  #       description: "Total fund size or asset value"
+  #       tags:
+  #         sensitivity: confidential
+  #     share_class:
+  #       description: "Share class designation if applicable"
+  #       tags:
+  #         sensitivity: public
+  #     stock_symbol_name:
+  #       description: "Stock ticker symbol for publicly traded assets"
+  #       tags:
+  #         sensitivity: public
+  #     vintage_year:
+  #       description: "Vintage year for fund or investment inception"
+  #       tags:
+  #         sensitivity: public
+  #     geography:
+  #       description: "Geographic focus or location of asset"
+  #       tags:
+  #         sensitivity: public
+  #     strategy:
+  #       description: "Investment strategy classification"
+  #       tags:
+  #         sensitivity: public
+  #     status:
+  #       description: "Current status of the asset (active, inactive, archived)"
+  #       tags:
+  #         sensitivity: public
+  #     org_id:
+  #       description: "Organization identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_asset_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["entity_master_asset_id"]
+
+  # document:
+  #   requires_compliance: true
+  #   description: "Document master data — document identifiers, metadata, and tracking information"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "document_management"
+  #     source_squad: "data-team"
+  #     dataset: "documents"
+  #     data_owner: "Operations"
+  #     refresh_cadence: daily
+  #     client_id: "default_client"
+  #   columns:
+  #     document_id:
+  #       description: "Unique document identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     document_password:
+  #       description: "Password or access protection for document"
+  #       tags:
+  #         sensitivity: confidential
+  #     document_received_date:
+  #       description: "Date document was received"
+  #       tags:
+  #         sensitivity: public
+  #     notice_date:
+  #       description: "Notice or effective date associated with document"
+  #       tags:
+  #         sensitivity: public
+  #     original_file_name:
+  #       description: "Original filename of the document"
+  #       tags:
+  #         sensitivity: public
+  #     file_path:
+  #       description: "Storage path or location of document file"
+  #       tags:
+  #         sensitivity: confidential
+  #     comments:
+  #       description: "Comments or notes about the document"
+  #       tags:
+  #         sensitivity: confidential
+  #     classification:
+  #       description: "Document classification level or type"
+  #       tags:
+  #         sensitivity: public
+  #     org_id:
+  #       description: "Organization identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     period_start_date:
+  #       description: "Start date of reporting or accounting period"
+  #       tags:
+  #         sensitivity: public
+  #     revision_id:
+  #       description: "Revision identifier for document versioning"
+  #       tags:
+  #         sensitivity: internal
+  #     docaccess_document_id:
+  #       description: "External document access system identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_document_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["document_id"]
+
+  # document_banking:
+  #   requires_compliance: true
+  #   description: "Banking information from documents — beneficiary and bank account details"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "banking_extraction"
+  #     source_squad: "data-team"
+  #     dataset: "banking_details"
+  #     data_owner: "Finance Operations"
+  #     refresh_cadence: daily
+  #     client_id: "default_client"
+  #   columns:
+  #     document_id:
+  #       description: "Reference to source document (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     beneficiary_account_name:
+  #       description: "Name of beneficiary account"
+  #       tags:
+  #         sensitivity: confidential
+  #     beneficiary_account_number:
+  #       description: "Beneficiary account number"
+  #       tags:
+  #         sensitivity: confidential
+  #     beneficiary_account_iban:
+  #       description: "Beneficiary IBAN for international transfers"
+  #       tags:
+  #         sensitivity: confidential
+  #     beneficiary_account_address:
+  #       description: "Address associated with beneficiary account"
+  #       tags:
+  #         sensitivity: confidential
+  #     beneficiary_bank_name:
+  #       description: "Name of beneficiary bank"
+  #       tags:
+  #         sensitivity: confidential
+  #     beneficiary_bank_aba:
+  #       description: "Beneficiary bank ABA routing number"
+  #       tags:
+  #         sensitivity: confidential
+  #     beneficiary_bank_swift:
+  #       description: "Beneficiary bank SWIFT code"
+  #       tags:
+  #         sensitivity: confidential
+  #     beneficiary_bank_reference:
+  #       description: "Reference code or identifier at beneficiary bank"
+  #       tags:
+  #         sensitivity: confidential
+  #     bank_location:
+  #       description: "Geographic location of primary bank"
+  #       tags:
+  #         sensitivity: public
+  #     correspondent_bank_name:
+  #       description: "Name of correspondent bank"
+  #       tags:
+  #         sensitivity: confidential
+  #     correspondent_account_name:
+  #       description: "Correspondent account name"
+  #       tags:
+  #         sensitivity: confidential
+  #     correspondent_account_number:
+  #       description: "Correspondent account number"
+  #       tags:
+  #         sensitivity: confidential
+  #     correspondent_aba:
+  #       description: "Correspondent ABA routing number"
+  #       tags:
+  #         sensitivity: confidential
+  #     correspondent_bank_swift:
+  #       description: "Correspondent bank SWIFT code"
+  #       tags:
+  #         sensitivity: confidential
+  #     intermediary_bank_name:
+  #       description: "Name of intermediary bank"
+  #       tags:
+  #         sensitivity: confidential
+  #     intermediary_bank_account_number:
+  #       description: "Intermediary bank account number"
+  #       tags:
+  #         sensitivity: confidential
+  #     intermediary_account_name:
+  #       description: "Intermediary account name"
+  #       tags:
+  #         sensitivity: confidential
+  #     ffc_name:
+  #       description: "FFC (Financial Flow Controller) name"
+  #       tags:
+  #         sensitivity: confidential
+  #     ffc_number:
+  #       description: "FFC identifier or number"
+  #       tags:
+  #         sensitivity: confidential
+  #     org_id:
+  #       description: "Organization identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     revision_id:
+  #       description: "Revision identifier for versioning"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_document_banking_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["document_id"]
+
+  # owner:
+  #   requires_compliance: true
+  #   description: "Owner master data — limited partners, funds, and investor entities"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "owner_master"
+  #     source_squad: "data-team"
+  #     dataset: "owner_master"
+  #     data_owner: "Investor Relations"
+  #     refresh_cadence: daily
+  #     client_id: "default_client"
+  #   columns:
+  #     owner_id:
+  #       description: "Unique owner identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_owner_id:
+  #       description: "Master data entity identifier for owner"
+  #       tags:
+  #         sensitivity: internal
+  #     owner_name:
+  #       description: "Legal name of owner entity"
+  #       tags:
+  #         sensitivity: public
+  #     owner_display_name:
+  #       description: "Display name for owner in user interfaces"
+  #       tags:
+  #         sensitivity: public
+  #     owner_type:
+  #       description: "Type of owner entity (Individual, Corporation, Fund)"
+  #       tags:
+  #         sensitivity: public
+  #     org_id:
+  #       description: "Organization identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_owner_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["owner_id"]
+
+  # performance_metric:
+  #   requires_compliance: true
+  #   description: "Performance metrics — KPIs and measurements for positions and assets"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "performance_analytics"
+  #     source_squad: "data-team"
+  #     dataset: "performance_metrics"
+  #     data_owner: "Analytics Team"
+  #     refresh_cadence: daily
+  #     client_id: "default_client"
+  #   columns:
+  #     performance_metric_id:
+  #       description: "Unique metric record identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     position_id:
+  #       description: "Reference to position entity"
+  #       tags:
+  #         sensitivity: internal
+  #     deal_id:
+  #       description: "Deal or transaction identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     document_id:
+  #       description: "Reference to source document"
+  #       tags:
+  #         sensitivity: internal
+  #     period_type:
+  #       description: "Type of period (Monthly, Quarterly, Annual)"
+  #       tags:
+  #         sensitivity: public
+  #     period_end_date:
+  #       description: "End date of measurement period"
+  #       tags:
+  #         sensitivity: public
+  #     metric_name:
+  #       description: "Name of performance metric (IRR, MOIC)"
+  #       tags:
+  #         sensitivity: public
+  #     metric_value:
+  #       description: "Measured value of performance metric"
+  #       tags:
+  #         sensitivity: confidential
+  #     currency:
+  #       description: "Currency of metric value"
+  #       tags:
+  #         sensitivity: public
+  #     fx_curr:
+  #       description: "FX currency for conversion reference"
+  #       tags:
+  #         sensitivity: public
+  #     fx_rate:
+  #       description: "FX exchange rate applied to metric"
+  #       tags:
+  #         sensitivity: confidential
+  #     org_id:
+  #       description: "Organization identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     revision_id:
+  #       description: "Revision identifier for versioning"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_position_id:
+  #       description: "Master data entity identifier for position"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_asset_id:
+  #       description: "Master data entity identifier for asset"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_owner_id:
+  #       description: "Master data entity identifier for owner"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_performance_metric_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["performance_metric_id"]
+
+  # position:
+  #   requires_compliance: true
+  #   description: "Position data — LP holdings, commitments, and investment positions"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "position_master"
+  #     source_squad: "data-team"
+  #     dataset: "positions"
+  #     data_owner: "Portfolio Management"
+  #     refresh_cadence: daily
+  #     client_id: "default_client"
+  #   columns:
+  #     position_id:
+  #       description: "Unique position identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_position_id:
+  #       description: "Master data entity identifier for position"
+  #       tags:
+  #         sensitivity: internal
+  #     owner_id:
+  #       description: "Reference to owner entity"
+  #       tags:
+  #         sensitivity: internal
+  #     asset_id:
+  #       description: "Reference to asset entity"
+  #       tags:
+  #         sensitivity: internal
+  #     lp_id_number:
+  #       description: "Limited partner identification number"
+  #       tags:
+  #         sensitivity: confidential
+  #     lot_share_class:
+  #       description: "Share class for this position lot"
+  #       tags:
+  #         sensitivity: public
+  #     commitment:
+  #       description: "Committed capital amount for this position"
+  #       tags:
+  #         sensitivity: confidential
+  #     blocker_vehicle:
+  #       description: "Blocker vehicle classification if applicable"
+  #       tags:
+  #         sensitivity: public
+  #     internal_access_vehicle:
+  #       description: "Internal access classification"
+  #       tags:
+  #         sensitivity: public
+  #     external_access_vehicle:
+  #       description: "External access classification"
+  #       tags:
+  #         sensitivity: public
+  #     status:
+  #       description: "Status of position (active, inactive, closed)"
+  #       tags:
+  #         sensitivity: public
+  #     inception_date:
+  #       description: "Date position was established"
+  #       tags:
+  #         sensitivity: public
+  #     org_id:
+  #       description: "Organization identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_position_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["position_id"]
+
+  # ref_metric:
+  #   requires_compliance: true
+  #   description: "Reference metric definitions — metric metadata and configuration"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "reference_data"
+  #     source_squad: "data-team"
+  #     dataset: "metric_definitions"
+  #     data_owner: "Analytics Team"
+  #     refresh_cadence: weekly
+  #     client_id: "default_client"
+  #   columns:
+  #     metric_name:
+  #       description: "Unique metric name identifier (primary key)"
+  #       tags:
+  #         sensitivity: public
+  #     display_name:
+  #       description: "Display name for metric in user interfaces"
+  #       tags:
+  #         sensitivity: public
+  #     description:
+  #       description: "Detailed description of metric definition and calculation"
+  #       tags:
+  #         sensitivity: public
+  #     category:
+  #       description: "Category or grouping of metric"
+  #       tags:
+  #         sensitivity: public
+  #     format_type:
+  #       description: "Format type for metric values (Percentage, Currency, Decimal)"
+  #       tags:
+  #         sensitivity: public
+  #     is_active:
+  #       description: "Whether metric is currently active"
+  #       tags:
+  #         sensitivity: public
+  #     sort_order:
+  #       description: "Sort order for display purposes"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     display_section:
+  #       description: "Section or category for UI display grouping"
+  #       tags:
+  #         sensitivity: public
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_metric_name
+  #       type: "PRIMARY_KEY"
+  #       columns: ["metric_name"]
+
+  # ref_transaction_type:
+  #   requires_compliance: true
+  #   description: "Reference transaction type definitions — transaction classification and rules"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "reference_data"
+  #     source_squad: "data-team"
+  #     dataset: "transaction_types"
+  #     data_owner: "Operations"
+  #     refresh_cadence: weekly
+  #     client_id: "default_client"
+  #   columns:
+  #     transaction_type:
+  #       description: "Unique transaction type identifier (primary key)"
+  #       tags:
+  #         sensitivity: public
+  #     display_name:
+  #       description: "Display name for transaction type"
+  #       tags:
+  #         sensitivity: public
+  #     category:
+  #       description: "High-level category of transaction (Cash Flow, Adjustment)"
+  #       tags:
+  #         sensitivity: public
+  #     subcategory:
+  #       description: "Subcategory for more detailed classification"
+  #       tags:
+  #         sensitivity: public
+  #     affects_paid_in:
+  #       description: "Whether transaction type affects paid-in capital"
+  #       tags:
+  #         sensitivity: public
+  #     affects_unfunded:
+  #       description: "Whether transaction type affects unfunded commitments"
+  #       tags:
+  #         sensitivity: public
+  #     is_gross:
+  #       description: "Whether transaction type is recorded as gross"
+  #       tags:
+  #         sensitivity: public
+  #     is_net:
+  #       description: "Whether transaction type is recorded as net"
+  #       tags:
+  #         sensitivity: public
+  #     is_total:
+  #       description: "Whether transaction type is a total or aggregate"
+  #       tags:
+  #         sensitivity: public
+  #     sign_convention:
+  #       description: "Sign convention for transaction amounts"
+  #       tags:
+  #         sensitivity: public
+  #     sort_order:
+  #       description: "Sort order for display purposes"
+  #       tags:
+  #         sensitivity: internal
+  #     is_active:
+  #       description: "Whether transaction type is currently active"
+  #       tags:
+  #         sensitivity: public
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_transaction_type
+  #       type: "PRIMARY_KEY"
+  #       columns: ["transaction_type"]
+
+  # transaction:
+  #   requires_compliance: true
+  #   description: "Transaction data — investment cash flows, distributions, and adjustments"
+  #   owner: "data-engineers"
+  #   tags:
+  #     source_system: "transaction_ledger"
+  #     source_squad: "data-team"
+  #     dataset: "transactions"
+  #     data_owner: "Finance Operations"
+  #     refresh_cadence: daily
+  #     client_id: "default_client"
+  #   columns:
+  #     transaction_id:
+  #       description: "Unique transaction identifier (primary key)"
+  #       tags:
+  #         sensitivity: internal
+  #     document_id:
+  #       description: "Reference to source document"
+  #       tags:
+  #         sensitivity: internal
+  #     position_id:
+  #       description: "Reference to position entity"
+  #       tags:
+  #         sensitivity: internal
+  #     deal_id:
+  #       description: "Deal or fund identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     transaction_type:
+  #       description: "Type of transaction (Capital Call, Distribution)"
+  #       tags:
+  #         sensitivity: public
+  #     amount:
+  #       description: "Transaction amount"
+  #       tags:
+  #         sensitivity: confidential
+  #     currency:
+  #       description: "Currency of transaction amount"
+  #       tags:
+  #         sensitivity: public
+  #     notes:
+  #       description: "Notes or comments about transaction"
+  #       tags:
+  #         sensitivity: confidential
+  #     corporate_action_type:
+  #       description: "Type of corporate action if applicable"
+  #       tags:
+  #         sensitivity: public
+  #     update_cost_basis:
+  #       description: "Flag indicating if cost basis should be updated"
+  #       tags:
+  #         sensitivity: public
+  #     trade_date:
+  #       description: "Date of transaction trade or execution"
+  #       tags:
+  #         sensitivity: public
+  #     posted_date:
+  #       description: "Date transaction was posted to accounting system"
+  #       tags:
+  #         sensitivity: public
+  #     fx_currency:
+  #       description: "FX currency for conversion"
+  #       tags:
+  #         sensitivity: public
+  #     fx_rate:
+  #       description: "FX exchange rate applied"
+  #       tags:
+  #         sensitivity: confidential
+  #     unfunded_matches:
+  #       description: "Matching information for unfunded commitments"
+  #       tags:
+  #         sensitivity: public
+  #     record_extraction_status:
+  #       description: "Status of record extraction from source document"
+  #       tags:
+  #         sensitivity: public
+  #     validated_transaction:
+  #       description: "Flag indicating if transaction has been validated"
+  #       tags:
+  #         sensitivity: public
+  #     reporting_complete_date:
+  #       description: "Date reporting for transaction was completed"
+  #       tags:
+  #         sensitivity: public
+  #     share:
+  #       description: "Share information if applicable"
+  #       tags:
+  #         sensitivity: public
+  #     price:
+  #       description: "Price per unit if applicable"
+  #       tags:
+  #         sensitivity: confidential
+  #     transaction_owner_name_extracted:
+  #       description: "Owner name extracted from source document"
+  #       tags:
+  #         sensitivity: confidential
+  #     transaction_asset_name_extracted:
+  #       description: "Asset name extracted from source document"
+  #       tags:
+  #         sensitivity: public
+  #     tags:
+  #       description: "Tags or labels associated with transaction"
+  #       tags:
+  #         sensitivity: public
+  #     org_id:
+  #       description: "Organization identifier"
+  #       tags:
+  #         sensitivity: internal
+  #     created_at:
+  #       description: "Record creation timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     updated_at:
+  #       description: "Record last update timestamp"
+  #       tags:
+  #         sensitivity: internal
+  #     recallable:
+  #       description: "Flag indicating if transaction is recallable"
+  #       tags:
+  #         sensitivity: public
+  #     outside_commitment:
+  #       description: "Flag for transactions outside original commitments"
+  #       tags:
+  #         sensitivity: public
+  #     revision_id:
+  #       description: "Revision identifier for versioning"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hash_key:
+  #       description: "System metadata — hash key for change detection"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_ingestion_date:
+  #       description: "System metadata — date record was ingested"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_partition_date:
+  #       description: "System metadata — partition date for data organization"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_year:
+  #       description: "System metadata — year partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_month:
+  #       description: "System metadata — month partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_day:
+  #       description: "System metadata — day partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_hour:
+  #       description: "System metadata — hour partition"
+  #       tags:
+  #         sensitivity: internal
+  #     x_ad_meta_minute:
+  #       description: "System metadata — minute partition"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_position_id:
+  #       description: "Master data entity identifier for position"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_asset_id:
+  #       description: "Master data entity identifier for asset"
+  #       tags:
+  #         sensitivity: internal
+  #     entity_master_owner_id:
+  #       description: "Master data entity identifier for owner"
+  #       tags:
+  #         sensitivity: internal
+  #   constraints:
+  #     - name: pk_transaction_id
+  #       type: "PRIMARY_KEY"
+  #       columns: ["transaction_id"]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEMPLATE — Copy this block for new tables
+# ═══════════════════════════════════════════════════════════════════════════
+#
+#   <TABLE_NAME>:
+#     requires_compliance: true
+#     skip_validations:
+#       - constraints                     # Table-level: skip constraint validation
+#       - tags                            # Table-level: skip tag validation
+#
+#     description: ""                      # REQUIRED
+#     owner: ""                            # REQUIRED: group or user
+#
+#     tags:
+#       source_system: ""                  # REQUIRED (unless in skip_validations)
+#       source_squad: ""                   # REQUIRED (unless in skip_validations)
+#       dataset: ""                        # REQUIRED (unless in skip_validations)
+#       data_owner: ""                     # REQUIRED (unless in skip_validations)
+#       refresh_cadence: ""                # REQUIRED: daily | hourly | weekly | event-driven
+#       client_id: ""                      # REQUIRED (unless in skip_validations)
+#
+#     columns:
+#       <COLUMN_NAME>:
+#         description: ""                  # REQUIRED (unless column_description in skip_validations)
+#         skip_validations:
+#           - sensitivity                 # Column-level: skip sensitivity tag requirement
+#           - description                 # Column-level: skip description requirement
+#         tags:
+#           sensitivity: ""               # REQUIRED: public | internal | confidential | restricted
+#                                         # (unless skipped in column skip_validations)
+#
+#     # NOTE: entity_id and client_id column tags are maintained by the
+#     #       governed tag custom_claim process — do not add them here.
+#
+#     constraints:                         # REQUIRED: at least one PRIMARY_KEY (unless table skips constraints)
+#       - name: pk_<column>                # PRIMARY KEY constraint
+#         type: "PRIMARY_KEY"
+#         columns: ["<primary_key_column>"]
+#       - name: chk_<constraint>           # Additional CHECK constraints (optional)
+#         type: "CHECK"
+#         check: "<SQL boolean expression>"

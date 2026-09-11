@@ -1,0 +1,62 @@
+# Config-driven Medallion Pipeline: Setup → Staging → Bronze → Silver → Gold
+#
+# Three-pipeline architecture:
+# 1. e2e_medallion_setup_and_staging: creates schemas, audit tables, staging tables
+# 2. e2e_medallion_pipeline (this file): Bronze → Silver → Gold ingestion
+# 3. e2e_medallion_tests: pytest suite for data quality and idempotency
+#
+# **Prerequisite:** Run e2e_medallion_setup_and_staging first to create
+# schemas, audit tables, and staging tables.
+#
+# Bronze is idempotent: replaying the same CDF changes is a no-op.
+# Silver syncs current state + deletes from Bronze via incremental CDF read.
+# Gold applies user-authored transforms per config.
+
+resources:
+  jobs:
+    e2e_medallion_pipeline:
+      name: "E2E Medallion Pipeline"
+      description: "Full medallion flow: Bronze (SCD2) → Silver (current-state) → Gold (aggregates)"
+
+      parameters:
+        - name: entity
+          default: "orders"
+
+      tasks:
+        - task_key: bronze_scd2
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/formatted_stg/bronze
+            base_parameters:
+              entity: "{{job.parameters.entity}}"
+            source: WORKSPACE
+          environment_key: serverless_env
+
+        - task_key: silver_conform
+          depends_on:
+            - task_key: bronze_scd2
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/formatted/silver
+            base_parameters:
+              entity: "{{job.parameters.entity}}"
+            source: WORKSPACE
+          environment_key: serverless_env
+
+        - task_key: gold_aggregate
+          depends_on:
+            - task_key: silver_conform
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/published/gold
+            base_parameters:
+              entity: "{{job.parameters.entity}}"
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      queue:
+        enabled: true
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            environment_version: "4"
+
+      performance_target: PERFORMANCE_OPTIMIZED

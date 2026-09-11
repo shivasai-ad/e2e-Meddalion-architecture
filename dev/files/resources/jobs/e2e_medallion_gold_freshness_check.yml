@@ -1,0 +1,45 @@
+# Gold freshness check: fails loudly if orders_status_summary hasn't been
+# refreshed recently, per common/gold_freshness.py's gold_refresh_log.
+# Deliberately its own job, on its own schedule -- a staleness alert must
+# still be able to fire even if e2e_medallion_pipeline_copy itself has
+# stopped running.
+#
+# pause_status: PAUSED -- matches this bundle's existing dev-verification
+# posture; unpause deliberately once deployed somewhere that should
+# actually alert on staleness.
+
+resources:
+  jobs:
+    e2e_medallion_gold_freshness_check_copy:
+      name: "E2E Medallion Gold Freshness Check (Copy)"
+
+      parameters:
+        - name: staleness_minutes
+          default: "60"
+
+      trigger:
+        pause_status: PAUSED
+        periodic:
+          interval: 1
+          unit: HOURS
+
+      tasks:
+        - task_key: gold_freshness_check
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/95_gold_freshness_check
+            base_parameters:
+              catalog: ${var.catalog}
+              use_external_tables: ${var.use_external_tables}
+              staleness_minutes: "{{job.parameters.staleness_minutes}}"
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      queue:
+        enabled: true
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            environment_version: "4"
+
+      performance_target: PERFORMANCE_OPTIMIZED

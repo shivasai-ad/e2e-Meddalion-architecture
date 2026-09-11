@@ -1,0 +1,200 @@
+defaults:
+  table_properties:
+    delta.enableChangeDataFeed: "true"
+    delta.columnMapping.mode: "name"
+    delta.enableTypeWidening: "true"
+    delta.autoOptimize.optimizeWrite: "true"
+    delta.autoOptimize.autoCompact: "true"
+
+tables:
+  orders:
+    description: "Synthetic CDC source replicating the orders system"
+    columns:
+      - name: order_id
+        type: STRING
+        nullable: false
+        description: "Unique order identifier (primary key)"
+      - name: customer_name
+        type: STRING
+        description: "Name of the customer who placed the order"
+      - name: status
+        type: STRING
+        description: "Current status of the order"
+      - name: amount
+        type: DOUBLE
+        description: "Order amount"
+    primary_keys: [order_id]
+
+  asset:
+    description: "Synthetic CDC source replicating asset master data"
+    columns:
+      - name: entity_master_asset_id
+        type: STRING
+        nullable: false
+        description: "Unique asset identifier (primary key)"
+      - name: asset_name
+        type: STRING
+        description: "Name of the asset"
+      - name: asset_type
+        type: STRING
+        description: "Type or classification of asset"
+      - name: currency
+        type: STRING
+        description: "Currency of the asset"
+      - name: status
+        type: STRING
+        description: "Current status of the asset"
+    primary_keys: [entity_master_asset_id]
+
+  document:
+    description: "Synthetic CDC source replicating document records"
+    columns:
+      - name: document_id
+        type: STRING
+        nullable: false
+        description: "Unique document identifier (primary key)"
+      - name: original_file_name
+        type: STRING
+        description: "Original filename of the document"
+      - name: classification
+        type: STRING
+        description: "Classification or category of document"
+      - name: document_received_date
+        type: DATE
+        description: "Date the document was received"
+    primary_keys: [document_id]
+
+  document_banking:
+    description: "Synthetic CDC source replicating banking info extracted from documents"
+    columns:
+      - name: document_id
+        type: STRING
+        nullable: false
+        description: "Reference to source document (primary key)"
+      - name: beneficiary_bank_name
+        type: STRING
+        description: "Name of beneficiary bank"
+      - name: bank_location
+        type: STRING
+        description: "Geographic location of the bank"
+      - name: beneficiary_account_name
+        type: STRING
+        description: "Name of beneficiary account"
+    primary_keys: [document_id]
+
+  owner:
+    description: "Synthetic CDC source replicating owner/entity master data"
+    columns:
+      - name: entity_master_owner_id
+        type: STRING
+        nullable: false
+        description: "Unique owner identifier (primary key)"
+      - name: owner_name
+        type: STRING
+        description: "Name of the owner entity"
+      - name: owner_type
+        type: STRING
+        description: "Type or classification of owner"
+    primary_keys: [entity_master_owner_id]
+
+  performance_metric:
+    description: "Synthetic CDC source replicating performance metrics and KPIs"
+    columns:
+      - name: performance_metric_id
+        type: STRING
+        nullable: false
+        description: "Unique metric record identifier (primary key)"
+      - name: metric_name
+        type: STRING
+        description: "Name of the performance metric"
+      - name: period_type
+        type: STRING
+        description: "Type of time period (monthly, quarterly, etc.)"
+      - name: metric_value
+        type: DOUBLE
+        description: "Measured value of the metric"
+    primary_keys: [performance_metric_id]
+
+  position:
+    description: "Synthetic CDC source replicating investment positions and holdings"
+    columns:
+      - name: entity_master_position_id
+        type: STRING
+        nullable: false
+        description: "Unique position identifier (primary key)"
+      - name: owner_id
+        type: STRING
+        description: "Reference to owner entity"
+      - name: asset_id
+        type: STRING
+        description: "Reference to asset entity"
+      - name: status
+        type: STRING
+        description: "Current status of the position"
+    primary_keys: [entity_master_position_id]
+
+  ref_metric:
+    description: "Synthetic CDC source replicating reference metric definitions"
+    columns:
+      - name: metric_name
+        type: STRING
+        nullable: false
+        description: "Unique metric name identifier (primary key)"
+      - name: display_name
+        type: STRING
+        description: "Display name for the metric"
+      - name: category
+        type: STRING
+        description: "Category or grouping of metric"
+      - name: format_type
+        type: STRING
+        description: "Format type for metric values"
+      - name: is_active
+        type: BOOLEAN
+        description: "Whether metric is currently active"
+    primary_keys: [metric_name]
+
+  ref_transaction_type:
+    description: "Synthetic CDC source replicating reference transaction type definitions"
+    columns:
+      - name: transaction_type
+        type: STRING
+        nullable: false
+        description: "Unique transaction type identifier (primary key)"
+      - name: display_name
+        type: STRING
+        description: "Display name for transaction type"
+      - name: category
+        type: STRING
+        description: "High-level category of transaction"
+      - name: subcategory
+        type: STRING
+        description: "Subcategory for detailed classification"
+      - name: is_active
+        type: BOOLEAN
+        description: "Whether transaction type is currently active"
+    primary_keys: [transaction_type]
+
+  transaction:
+    description: "Synthetic CDC source replicating transaction records"
+    columns:
+      - name: transaction_id
+        type: STRING
+        nullable: false
+        description: "Unique transaction identifier (primary key)"
+      - name: position_id
+        type: STRING
+        description: "Reference to position entity"
+      - name: transaction_type
+        type: STRING
+        description: "Type of transaction"
+      - name: amount
+        type: DOUBLE
+        description: "Transaction amount"
+      - name: currency
+        type: STRING
+        description: "Currency of transaction"
+      - name: trade_date
+        type: DATE
+        description: "Date of transaction"
+    primary_keys: [transaction_id]

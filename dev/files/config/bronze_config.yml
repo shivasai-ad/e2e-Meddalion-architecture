@@ -1,0 +1,172 @@
+defaults:
+  # Per-entity ignored columns in schema drift detection (combined with global _ALWAYS_IGNORED_COLUMNS)
+  # Columns listed here won't trigger COLUMN_ADDED alerts. Examples: framework columns, optional columns.
+  ignored_columns: []
+
+  table_properties:
+    delta.enableChangeDataFeed: "true"
+    delta.columnMapping.mode: "name"
+    delta.enableTypeWidening: "true"
+    delta.enableIcebergCompatV2: "true"
+    delta.universalFormat.enabledFormats: "iceberg"
+    delta.autoOptimize.optimizeWrite: "true"
+    delta.autoOptimize.autoCompact: "true"
+    delta.logRetentionDuration: "30 days"
+    delta.deletedFileRetentionDuration: "30 days"
+
+  audit_columns:
+    - name: _bronze_valid_from
+      type: TIMESTAMP
+      nullable: false
+    - name: _bronze_valid_to
+      type: TIMESTAMP
+      nullable: true
+    - name: _bronze_is_current
+      type: BOOLEAN
+      nullable: false
+    - name: _bronze_hash
+      type: STRING
+      nullable: false
+    - name: _bronze_ingested_at
+      type: TIMESTAMP
+      nullable: false
+
+tables:
+  orders:
+    columns:
+      - name: order_id
+        type: STRING
+        nullable: false
+      - name: customer_name
+        type: STRING
+      - name: status
+        type: STRING
+      - name: amount
+        type: DOUBLE
+    primary_keys: [order_id]
+
+  asset:
+    columns:
+      - name: entity_master_asset_id
+        type: STRING
+        nullable: false
+      - name: asset_name
+        type: STRING
+      - name: asset_type
+        type: STRING
+      - name: currency
+        type: STRING
+      - name: status
+        type: STRING
+    primary_keys: [entity_master_asset_id]
+    # clustering_keys: [asset_type, status]  # Optional: can specify different clustering keys than primary_keys
+
+  document:
+    columns:
+      - name: document_id
+        type: STRING
+        nullable: false
+      - name: original_file_name
+        type: STRING
+      - name: classification
+        type: STRING
+      - name: document_received_date
+        type: DATE
+    primary_keys: [document_id]
+
+  document_banking:
+    columns:
+      - name: document_id
+        type: STRING
+        nullable: false
+      - name: beneficiary_bank_name
+        type: STRING
+      - name: bank_location
+        type: STRING
+      - name: beneficiary_account_name
+        type: STRING
+    primary_keys: [document_id]
+
+  owner:
+    columns:
+      - name: entity_master_owner_id
+        type: STRING
+        nullable: false
+      - name: owner_name
+        type: STRING
+      - name: owner_type
+        type: STRING
+    primary_keys: [entity_master_owner_id]
+
+  performance_metric:
+    columns:
+      - name: performance_metric_id
+        type: STRING
+        nullable: false
+      - name: metric_name
+        type: STRING
+      - name: period_type
+        type: STRING
+      - name: metric_value
+        type: DOUBLE
+    primary_keys: [performance_metric_id]
+
+  position:
+    columns:
+      - name: entity_master_position_id
+        type: STRING
+        nullable: false
+      - name: owner_id
+        type: STRING
+      - name: asset_id
+        type: STRING
+      - name: status
+        type: STRING
+    primary_keys: [entity_master_position_id]
+
+  ref_metric:
+    columns:
+      - name: metric_name
+        type: STRING
+        nullable: false
+      - name: display_name
+        type: STRING
+      - name: category
+        type: STRING
+      - name: format_type
+        type: STRING
+      - name: is_active
+        type: BOOLEAN
+    primary_keys: [metric_name]
+
+  ref_transaction_type:
+    columns:
+      - name: transaction_type
+        type: STRING
+        nullable: false
+      - name: display_name
+        type: STRING
+      - name: category
+        type: STRING
+      - name: subcategory
+        type: STRING
+      - name: is_active
+        type: BOOLEAN
+    primary_keys: [transaction_type]
+
+  transaction:
+    columns:
+      - name: transaction_id
+        type: STRING
+        nullable: false
+      - name: position_id
+        type: STRING
+      - name: transaction_type
+        type: STRING
+      - name: amount
+        type: DOUBLE
+      - name: currency
+        type: STRING
+      - name: trade_date
+        type: DATE
+    primary_keys: [transaction_id]

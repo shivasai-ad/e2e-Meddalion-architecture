@@ -1,0 +1,49 @@
+# Infrastructure setup: schemas, audit tables, and staging tables
+#
+# This is Pipeline 1 of the new two-pipeline architecture:
+# - Creates the 5 schemas (stg, bronze, silver, gold, audit)
+# - Creates framework-owned audit tables (audit_log, job_flags, schema_audit_log)
+# - Creates staging tables (synthetic CDC source, CDF-enabled, no seed data)
+#
+# Must run before any medallion pipeline (Bronze/Silver/Gold).
+# Idempotent: safe to run multiple times.
+
+resources:
+  jobs:
+    e2e_medallion_setup_and_staging:
+      name: "E2E Medallion Setup & Staging"
+      description: "Infrastructure setup: schemas + audit tables + staging tables"
+
+      parameters:
+        - name: reset
+          default: "false"
+
+      tasks:
+        - task_key: setup_environment
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/setup/00_setup_test_environment
+            base_parameters:
+              catalog: ${var.catalog}
+              reset: "{{job.parameters.reset}}"
+            source: WORKSPACE
+          environment_key: serverless_env
+
+        - task_key: create_staging_tables
+          depends_on:
+            - task_key: setup_environment
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/stg/staging
+            base_parameters:
+              entity: "orders"
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      queue:
+        enabled: true
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            environment_version: "4"
+
+      performance_target: PERFORMANCE_OPTIMIZED

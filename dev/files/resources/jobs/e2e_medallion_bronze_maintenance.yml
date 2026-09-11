@@ -1,0 +1,40 @@
+# Bronze table maintenance: OPTIMIZE + VACUUM, on its own schedule --
+# deliberately NOT a task on e2e_medallion_pipeline.yml. Maintenance cadence
+# has nothing to do with ingestion cadence, and a slow OPTIMIZE/VACUUM run
+# must never be able to delay or block a Bronze/Silver/Gold run.
+#
+# pause_status: PAUSED -- matches this bundle's existing dev-verification
+# posture (nothing in this harness auto-runs); unpause deliberately once
+# this is deployed somewhere that should actually run it on a schedule.
+
+resources:
+  jobs:
+    e2e_medallion_bronze_maintenance_copy:
+      name: "E2E Medallion Bronze Maintenance (Copy)"
+
+      trigger:
+        pause_status: PAUSED
+        periodic:
+          interval: 1
+          unit: DAYS
+
+      tasks:
+        - task_key: bronze_maintenance
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/94_bronze_maintenance
+            base_parameters:
+              catalog: ${var.catalog}
+              use_external_tables: ${var.use_external_tables}
+              formatted_bucket: ${var.formatted_bucket}
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      queue:
+        enabled: true
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            environment_version: "4"
+
+      performance_target: PERFORMANCE_OPTIMIZED
