@@ -91,6 +91,7 @@ def _snapshot_key(table_short_name: str) -> str:
 def detect_and_log(
     spark, catalog: str, audit_schema: str, table_fqn: str, table_short_name: str,
     use_external: bool = False, bucket: str = None, halt_on_drop: bool = False,
+    halt_on_type_change: bool = False,
 ) -> list:
     """Compares table_fqn's live schema against the snapshot recorded last
     time this was called for table_short_name. Logs any drift to
@@ -100,14 +101,17 @@ def detect_and_log(
     nothing to diff a brand-new baseline against).
 
     halt_on_drop=False by default -- a dropped column is logged but never
-    stops the pipeline, which is what tests/test_column_drop_handling.py and
-    93_schema_evolution_playbook.py Scenario B both rely on ("must NOT
-    raise"). Pass halt_on_drop=True (wired through as an opt-in job
-    parameter, see notebooks 01/02) to get the stricter halt-on-drop
-    behavior instead, for a caller that wants a dropped business column to
-    stop the run rather than be silently absorbed. The raise happens after
-    _log_changes, so a halted run is still fully diagnosable from
-    schema_audit_log afterward."""
+    stops the pipeline. Pass halt_on_drop=True to get the stricter
+    halt-on-drop behavior instead, for a caller that wants a dropped
+    business column to stop the run rather than be silently absorbed.
+
+    halt_on_type_change=False by default, same idea but for TYPE_CHANGED --
+    a column silently changing type (e.g. STRING -> INT) can just as easily
+    cause silent bad casts or precision loss downstream, so callers that
+    want that to halt too can opt in the same way.
+
+    Either raise happens after _log_changes, so a halted run is still fully
+    diagnosable from schema_audit_log afterward."""
     ensure_table(spark, catalog, audit_schema, use_external, bucket)
     job_flags.ensure_table(spark, catalog, audit_schema, use_external, bucket)
 
@@ -135,12 +139,17 @@ def detect_and_log(
         job_flags.set(spark, catalog, audit_schema, SCHEMA_AUDIT_JOB_NAME, key, json.dumps(current))
 
         dropped = [c["column_name"] for c in changes if c["change_type"] == "COLUMN_DROPPED"]
+        type_changed = [c["column_name"] for c in changes if c["change_type"] == "TYPE_CHANGED"]
+        reasons = []
         if halt_on_drop and dropped:
+            reasons.append(f"column(s) {dropped} dropped")
+        if halt_on_type_change and type_changed:
+            reasons.append(f"column(s) {type_changed} changed type")
+        if reasons:
             # Raised only after the audit rows above are written, so a
             # halted run is still fully diagnosable from schema_audit_log.
             raise RuntimeError(
-                f"Column(s) {dropped} dropped from {table_fqn} -- halting "
-                f"because halt_on_drop=True was requested for this run."
+                f"Schema drift halted the run for {table_fqn}: {'; '.join(reasons)}."
             )
     return changes
 
@@ -149,6 +158,7 @@ def detect_drift_against_config(
     spark, catalog: str, audit_schema: str, table_fqn: str, table_short_name: str,
     expected_columns: list, ignored_columns: list = None,
     use_external: bool = False, bucket: str = None, halt_on_drop: bool = False,
+    halt_on_type_change: bool = False,
 ) -> list:
     """Compares table_fqn's live schema against expected_columns (from config).
 
@@ -171,6 +181,9 @@ def detect_drift_against_config(
         use_external: Whether to use external storage
         bucket: S3 bucket if use_external=True
         halt_on_drop: If True, raise RuntimeError when columns are dropped
+        halt_on_type_change: If True, raise RuntimeError when a column's
+            live type no longer matches config -- same idea as
+            halt_on_drop, but for silent type drift instead of removal.
 
     Returns:
         List of changes found (empty if none)
@@ -233,10 +246,20 @@ def detect_drift_against_config(
 
         # Halt if critical
         dropped = [c["column_name"] for c in changes if c["change_type"] == "COLUMN_DROPPED"]
+        type_changed = [c["column_name"] for c in changes if c["change_type"] == "TYPE_CHANGED"]
+        reasons = []
         if halt_on_drop and dropped:
+            reasons.append(
+                f"column(s) {dropped} are declared in config but no longer exist in the source"
+            )
+        if halt_on_type_change and type_changed:
+            reasons.append(
+                f"column(s) {type_changed} no longer match their declared config type"
+            )
+        if reasons:
             raise RuntimeError(
-                f"Schema validation failed for {table_fqn}: column(s) {dropped} are declared in config "
-                f"but no longer exist in staging. Update config or restore the column(s) before re-running. "
+                f"Schema validation failed for {table_fqn}: {'; '.join(reasons)}. "
+                f"Update config or restore the column(s)/types before re-running. "
                 f"See schema_audit_log for full details."
             )
 

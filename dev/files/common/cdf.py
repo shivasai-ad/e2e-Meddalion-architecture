@@ -39,6 +39,17 @@ def read_changes(spark, table_fqn: str, from_version, to_version):
 def latest_per_key(df, keys):
     """Collapse several changes for the same key within one batch down to
     the most recent, ordered by Delta's own commit version -- the source of
-    truth for commit order, unlike any custom processing timestamp column."""
+    truth for commit order, unlike any custom processing timestamp column.
+
+    # Same-commit tiebreaker (delete > update_postimage > insert) -- disabled
+    # for now, not currently needed. To re-enable, restore this as a second
+    # .orderBy() key below:
+    #
+    # change_type_priority = (
+    #     F.when(F.col("_change_type") == "delete", 3)
+    #     .when(F.col("_change_type") == "update_postimage", 2)
+    #     .otherwise(1)
+    # )
+    """
     w = Window.partitionBy(*[F.col(k) for k in keys]).orderBy(F.col("_commit_version").desc())
     return df.withColumn("_rn", F.row_number().over(w)).filter(F.col("_rn") == 1).drop("_rn")

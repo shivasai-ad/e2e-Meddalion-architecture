@@ -191,7 +191,7 @@ def process_silver_entity(spark, catalog: str, entity: str, config: Dict, schema
         spark, catalog, schemas["audit"], bronze_fqn, f"bronze_{entity}",
         expected_from_bronze,
         ignored_columns=bronze_ignored,  # Per-entity config + global _ALWAYS_IGNORED_COLUMNS
-        use_external=USE_EXTERNAL, bucket=AUDIT_BUCKET, halt_on_drop=True
+        use_external=USE_EXTERNAL, bucket=AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True
     )
 
     # Schema drift snapshot: track changes from previous run (for historical audit trail)
@@ -298,7 +298,7 @@ def _bootstrap_silver_table(
     control.set_watermark(spark, catalog, schemas["audit"], entity, bronze_bootstrap_version, 0, row_count, layer="silver")
 
     # Log Silver's own schema (checked after the write, same as the incremental path).
-    schema_audit.detect_and_log(spark, catalog, schemas["audit"], silver_fqn, f"silver_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True)
+    schema_audit.detect_and_log(spark, catalog, schemas["audit"], silver_fqn, f"silver_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True)
 
     return {"deleted": 0, "upserted": row_count, "version": bronze_bootstrap_version, "ran": True}
 
@@ -417,7 +417,7 @@ def _incremental_silver_merge(
     # Log Silver's own schema (checked after the write, so a widened/changed
     # schema is captured the same run it happens, same pattern as Bronze).
     # Halt on critical (dropped) column changes.
-    schema_audit.detect_and_log(spark, catalog, schemas["audit"], silver_fqn, f"silver_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True)
+    schema_audit.detect_and_log(spark, catalog, schemas["audit"], silver_fqn, f"silver_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True)
 
     return {"deleted": n_deleted, "upserted": n_upserted, "version": to_version, "ran": True}
 

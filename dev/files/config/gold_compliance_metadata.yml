@@ -515,6 +515,11 @@ tables:
         description: "Order amount in base currency"
         tags:
           sensitivity: confidential
+      total_tax_amount:
+        type: DOUBLE
+        description: "Order amount including 18% tax (amount * 1.18)"
+        tags:
+          sensitivity: confidential
       _gold_refreshed_at:
         type: TIMESTAMP
         description: "Timestamp when Gold table was last refreshed"
@@ -524,6 +529,9 @@ tables:
       - name: pk_order_id
         type: "PRIMARY_KEY"
         columns: ["order_id"]
+      - name: valid_order_amount
+        type: "CHECK"
+        check: "amount IS NOT NULL AND amount > 0"
 
   asset:
     requires_compliance: true

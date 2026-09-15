@@ -166,7 +166,7 @@ def process_bronze_entity(spark, catalog: str, entity: str, config: Dict, schema
         spark, catalog, schemas["audit"], stg_fqn, f"staging_{entity}",
         columns,  # Expected columns from config
         ignored_columns=staging_ignored,  # Per-entity config + global _ALWAYS_IGNORED_COLUMNS
-        use_external=USE_EXTERNAL, bucket=AUDIT_BUCKET, halt_on_drop=True
+        use_external=USE_EXTERNAL, bucket=AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True
     )
 
     # Schema drift snapshot: track changes from previous run (for historical audit trail)
@@ -273,7 +273,7 @@ def _bootstrap_bronze_table(
     control.set_watermark(spark, catalog, schemas["audit"], entity, stg_bootstrap_version, 0, row_count)
 
     # Log Bronze's own schema (checked after the write, same as the incremental path).
-    schema_audit.detect_and_log(spark, catalog, schemas["audit"], bronze_fqn, f"bronze_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True)
+    schema_audit.detect_and_log(spark, catalog, schemas["audit"], bronze_fqn, f"bronze_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True)
 
     return {"closed": 0, "inserted": row_count, "version": stg_bootstrap_version, "ran": True}
 
@@ -400,7 +400,7 @@ def _incremental_bronze_merge(
     control.set_watermark(spark, catalog, schemas["audit"], entity, to_version, n_close, n_insert)
 
     # Log schema changes (checked after writes, so mergeSchema changes are captured)
-    schema_audit.detect_and_log(spark, catalog, schemas["audit"], bronze_fqn, f"bronze_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True)
+    schema_audit.detect_and_log(spark, catalog, schemas["audit"], bronze_fqn, f"bronze_{entity}", USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True)
 
     return {"closed": n_close, "inserted": n_insert, "version": to_version, "ran": True}
 
