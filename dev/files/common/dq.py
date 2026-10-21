@@ -1,10 +1,15 @@
-"""Data-quality gate for Gold promotion, built on DQX.
+"""Data-quality gate for every layer, built on DQX.
 
-Rules live in config/dq_rules/<entity>.yml (DQX metadata format).
-- error-level failures: rows go to <entity>_quarantine in the gold schema,
-  then the run stops before anything reaches Gold.
-- warn-level failures: rows are loaded, and the warning count is printed.
-Entities with no rules file skip this gate.
+Rules are DQX checks (metadata format). Two sources:
+- YAML files: config/dq_rules/<layer>/<entity>.yml (e.g. gold, silver)
+- Generated: pk_not_null_checks() builds one not-null rule per primary-key
+  column from silver_config.yml, so primary keys are never duplicated.
+
+Behaviour (same in every layer):
+- error-level failures: rows go to <target>_quarantine in the layer's schema,
+  then the run stops before anything is written.
+- warn-level failures: rows are kept and the warning count is printed.
+- An entity with no rules file skips the YAML gate.
 """
 import copy
 import os
@@ -27,9 +32,9 @@ def get_engine():
     return _ENGINE
 
 
-def load_dq_rules(entity: str, rules_dir: str) -> Optional[List[Dict]]:
-    """Return the DQX checks for an entity, or None if it has no rules file."""
-    path = os.path.join(rules_dir, f"{entity}.yml")
+def load_dq_rules(layer: str, entity: str, rules_root: str) -> Optional[List[Dict]]:
+    """Return the DQX checks in rules_root/<layer>/<entity>.yml, or None if absent."""
+    path = os.path.join(rules_root, layer, f"{entity}.yml")
     if not os.path.exists(path):
         return None
     with open(path) as f:
@@ -38,6 +43,18 @@ def load_dq_rules(entity: str, rules_dir: str) -> Optional[List[Dict]]:
     if not checks:
         raise ValueError(f"DQ rules file '{path}' has no 'checks' entries.")
     return checks
+
+
+def pk_not_null_checks(primary_keys: List[str]) -> List[Dict]:
+    """One error-level is_not_null check per primary-key column."""
+    return [
+        {
+            "name": f"pk_{col}_not_null",
+            "criticality": "error",
+            "check": {"function": "is_not_null", "arguments": {"column": col}},
+        }
+        for col in primary_keys
+    ]
 
 
 def scope_checks(checks: List[Dict], scope_filter: str) -> List[Dict]:
@@ -57,11 +74,11 @@ def quality_gate(
     quarantine_fqn: str,
     label: str,
 ) -> DataFrame:
-    """Run the checks on df. Returns the rows that may be loaded.
+    """Run checks on df. Returns the rows that may be written.
 
     If any error-level row fails, the failing rows are appended to
     quarantine_fqn and a ValueError is raised, so the caller stops
-    before writing anything to Gold.
+    before writing anything.
     """
     print(f"\n{'-'*70}")
     print(f"DQ GATE [{label}] — {entity}: {len(checks)} rule(s)")
@@ -94,5 +111,5 @@ def quality_gate(
     print(f"   ✗ {n_bad} row(s) written to quarantine: {quarantine_fqn}")
     raise ValueError(
         f"DQ FAILED for '{entity}' [{label}]: {n_bad} row(s) with error-level "
-        f"failures. Quarantined to {quarantine_fqn}. Nothing was loaded to Gold."
+        f"failures. Quarantined to {quarantine_fqn}. Nothing was written."
     )

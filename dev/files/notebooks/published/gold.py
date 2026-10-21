@@ -57,7 +57,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, audit_log, control, schema_audit, cdf, dq_gold
+from common import ddl, audit_log, control, schema_audit, cdf, dq
 from common.gold_compliance_validator import (
     load_compliance_config,
     compute_config_hash,
@@ -76,7 +76,7 @@ CATALOG = get_catalog()
 USE_EXTERNAL = get_use_external_tables()
 AUDIT_BUCKET = get_s3_bucket("audit") if USE_EXTERNAL else None
 CONFIG_HASH_TAG = "metadata_hash"
-DQ_RULES_DIR = os.path.join(PROJECT_ROOT, "config/dq_rules")
+DQ_RULES_ROOT = os.path.join(PROJECT_ROOT, "config/dq_rules")
 
 # Framework-owned audit columns and table properties: same for every Gold
 # table, so these are hardcoded here rather than duplicated per-entity in a
@@ -325,9 +325,9 @@ def _bootstrap_gold_table(
     # ═══════════════════════════════════════════════════════════════════════════
 
     silver_df = spark.table(silver_fqn)
-    dq_rules = dq_gold.load_dq_rules(entity, DQ_RULES_DIR)
+    dq_rules = dq.load_dq_rules("gold", entity, DQ_RULES_ROOT)
     if dq_rules:
-        silver_df = dq_gold.quality_gate(
+        silver_df = dq.quality_gate(
             spark, entity, silver_df, dq_rules,
             quarantine_fqn=f"{catalog}.{schemas['gold']}.{entity}_quarantine",
             label="bootstrap (Silver)",
@@ -513,11 +513,11 @@ def _incremental_gold_merge(
     # and raises, so the watermark is NOT advanced and the next run retries.
     # ═══════════════════════════════════════════════════════════════════════════
 
-    dq_rules = dq_gold.load_dq_rules(entity, DQ_RULES_DIR)
+    dq_rules = dq.load_dq_rules("gold", entity, DQ_RULES_ROOT)
     if dq_rules:
-        source = dq_gold.quality_gate(
+        source = dq.quality_gate(
             spark, entity, source,
-            dq_gold.scope_checks(dq_rules, "_change_type <> 'delete'"),
+            dq.scope_checks(dq_rules, "_change_type <> 'delete'"),
             quarantine_fqn=f"{catalog}.{schemas['gold']}.{entity}_quarantine",
             label="incremental (Silver CDF)",
         )

@@ -57,7 +57,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, cdf, audit_log, control, schema_audit
+from common import ddl, cdf, audit_log, control, schema_audit, dq
 
 # COMMAND ----------
 
@@ -284,6 +284,16 @@ def _bootstrap_silver_table(
     for fw_col in framework_audit:
         new_rows = new_rows.withColumn(fw_col, F.lit(atomic_ts).cast(audit_col_types[fw_col]))
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DQ GATE (Bronze -> Silver, first-time load): primary-key columns must not
+    # be null. Failing rows are quarantined and the run stops before the insert.
+    # ═══════════════════════════════════════════════════════════════════════════
+    new_rows = dq.quality_gate(
+        spark, entity, new_rows, dq.pk_not_null_checks(primary_keys),
+        quarantine_fqn=f"{catalog}.{schemas['silver']}.{entity}_quarantine",
+        label="bootstrap (Bronze)",
+    )
+
     row_count = new_rows.count()
     if row_count > 0:
         with audit_logger.audit(silver_fqn, audit_log.Action.INSERT) as log_ctx:
@@ -355,6 +365,17 @@ def _incremental_silver_merge(
     # commits) to a single UPDATE, and a genuine delete (one row,
     # is_current=FALSE, no newer row) to a DELETE.
     changes = cdf.latest_per_key(changes, primary_keys)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DQ GATE (Bronze CDF -> Silver, before MERGE): primary-key columns must not
+    # be null. A failure quarantines the bad rows and raises; the Silver
+    # watermark is only moved after a successful MERGE, so the next run retries.
+    # ═══════════════════════════════════════════════════════════════════════════
+    changes = dq.quality_gate(
+        spark, entity, changes, dq.pk_not_null_checks(primary_keys),
+        quarantine_fqn=f"{catalog}.{schemas['silver']}.{entity}_quarantine",
+        label="incremental (Bronze CDF)",
+    )
 
     # ═══════════════════════════════════════════════════════════════════════════
     # BUILD THE MERGE SOURCE: business cols + mapped audit cols (renamed from
