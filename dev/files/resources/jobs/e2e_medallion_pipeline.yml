@@ -58,5 +58,7 @@ resources:
         - environment_key: serverless_env
           spec:
             environment_version: "4"
+            dependencies:
+              - databricks-labs-dqx==0.16.0
 
       performance_target: PERFORMANCE_OPTIMIZED
