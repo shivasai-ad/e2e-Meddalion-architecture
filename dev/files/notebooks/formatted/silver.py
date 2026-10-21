@@ -290,7 +290,7 @@ def _bootstrap_silver_table(
     # ═══════════════════════════════════════════════════════════════════════════
     new_rows = dq.quality_gate(
         spark, entity, new_rows, dq.pk_not_null_checks(primary_keys),
-        quarantine_fqn=f"{catalog}.{schemas['silver']}.{entity}_quarantine",
+        quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
         label="bootstrap (Bronze)",
     )
 
@@ -373,7 +373,7 @@ def _incremental_silver_merge(
     # ═══════════════════════════════════════════════════════════════════════════
     changes = dq.quality_gate(
         spark, entity, changes, dq.pk_not_null_checks(primary_keys),
-        quarantine_fqn=f"{catalog}.{schemas['silver']}.{entity}_quarantine",
+        quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
         label="incremental (Bronze CDF)",
     )
 

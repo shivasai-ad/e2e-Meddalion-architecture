@@ -85,6 +85,10 @@ SCHEMAS = {
     "silver": f"{SCHEMA_PREFIX}_silver",
     "gold": f"{SCHEMA_PREFIX}_gold",
     "audit": f"{SCHEMA_PREFIX}_audit",
+    # DQ quarantine (rows that fail error-level checks): Silver -> formatted_exception,
+    # Gold -> published_exception
+    "formatted_exception": f"{SCHEMA_PREFIX}_formatted_exception",
+    "published_exception": f"{SCHEMA_PREFIX}_published_exception",
 }
 
 # S3 Layer directory names (from medallion-cdc-fed-pattern.md)
