@@ -57,7 +57,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, audit_log, control, schema_audit, cdf
+from common import ddl, audit_log, control, schema_audit, cdf, dq_gold
 from common.gold_compliance_validator import (
     load_compliance_config,
     compute_config_hash,
@@ -76,6 +76,7 @@ CATALOG = get_catalog()
 USE_EXTERNAL = get_use_external_tables()
 AUDIT_BUCKET = get_s3_bucket("audit") if USE_EXTERNAL else None
 CONFIG_HASH_TAG = "metadata_hash"
+DQ_RULES_DIR = os.path.join(PROJECT_ROOT, "config/dq_rules")
 
 # Framework-owned audit columns and table properties: same for every Gold
 # table, so these are hardcoded here rather than duplicated per-entity in a
@@ -318,6 +319,22 @@ def _bootstrap_gold_table(
 ) -> Dict:
     """Bootstrap: create Gold table, apply metadata, insert all Silver rows."""
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DQ GATE (Silver, BEFORE any table is created). Error-level failures are
+    # quarantined and stop the run. Entities without a rules file skip the gate.
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    silver_df = spark.table(silver_fqn)
+    dq_rules = dq_gold.load_dq_rules(entity, DQ_RULES_DIR)
+    if dq_rules:
+        silver_df = dq_gold.quality_gate(
+            spark, entity, silver_df, dq_rules,
+            quarantine_fqn=f"{catalog}.{schemas['gold']}.{entity}_quarantine",
+            label="bootstrap (Silver)",
+        )
+    else:
+        print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")
+
     print(f"\n{'='*70}")
     print(f"BOOTSTRAP: Creating Gold table '{gold_fqn}'")
     print(f"{'='*70}")
@@ -383,7 +400,6 @@ def _bootstrap_gold_table(
     # after this point instead of re-reading from version 0.
     silver_bootstrap_version = spark.sql(f"DESCRIBE HISTORY {silver_fqn}").agg(F.max("version")).collect()[0][0]
 
-    silver_df = spark.table(silver_fqn)
     silver_count = silver_df.count()
 
     if silver_count > 0:
@@ -411,6 +427,28 @@ def _bootstrap_gold_table(
     return {"deleted": 0, "upserted": silver_count, "version": silver_bootstrap_version, "ran": True}
 
 
+def _sync_metadata_if_changed(spark, catalog: str, entity: str, compliance_entry: Dict, schemas: Dict) -> None:
+    """Re-apply compliance metadata only when the config hash has changed."""
+    if not compliance_entry.get("requires_compliance", False):
+        return
+
+    current_hash = compute_config_hash(compliance_entry)
+    stored_hash = get_table_tag_value(catalog, schemas["gold"], entity, CONFIG_HASH_TAG, spark)
+
+    if current_hash == stored_hash:
+        print(f"✓ Config unchanged (hash match) — skipping metadata re-application")
+        return
+
+    print(f"⚠ Config changed (hash mismatch) — re-applying compliance metadata")
+    result = apply_compliance_metadata(catalog, schemas["gold"], entity, compliance_entry, spark)
+    print(f"{'='*60}")
+    print(f"METADATA RE-APPLIED")
+    print(f"{'='*60}")
+    for item in result["applied"]:
+        print(f"  ✓ {item}")
+    print(f"{'='*60}\n")
+
+
 def _incremental_gold_merge(
     spark, catalog: str, entity: str, gold_fqn: str, silver_fqn: str, gold_columns: List[Tuple[str, str]],
     compliance_entry: Dict, schemas: Dict, primary_keys: List[str]
@@ -420,26 +458,6 @@ def _incremental_gold_merge(
     print(f"\n{'='*70}")
     print(f"INCREMENTAL: Gold table '{gold_fqn}' already exists")
     print(f"{'='*70}")
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # HASH-BASED METADATA DRIFT DETECTION
-    # ═══════════════════════════════════════════════════════════════════════════
-
-    if compliance_entry.get("requires_compliance", False):
-        current_hash = compute_config_hash(compliance_entry)
-        stored_hash = get_table_tag_value(catalog, schemas["gold"], entity, CONFIG_HASH_TAG, spark)
-
-        if current_hash == stored_hash:
-            print(f"✓ Config unchanged (hash match) — skipping metadata re-application")
-        else:
-            print(f"⚠ Config changed (hash mismatch) — re-applying compliance metadata")
-            result = apply_compliance_metadata(catalog, schemas["gold"], entity, compliance_entry, spark)
-            print(f"{'='*60}")
-            print(f"METADATA RE-APPLIED")
-            print(f"{'='*60}")
-            for item in result["applied"]:
-                print(f"  ✓ {item}")
-            print(f"{'='*60}\n")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # WATERMARK: read Gold's own last-processed Silver version (job_flags,
@@ -462,6 +480,7 @@ def _incremental_gold_merge(
         print(f"   ⚠ No prior Gold watermark found — reading ALL Silver via CDF (versions 0-{silver_version})")
 
     if silver_from_version is not None and silver_from_version >= silver_version:
+        _sync_metadata_if_changed(spark, catalog, entity, compliance_entry, schemas)
         print(f"   ℹ Already at target version — skipping processing\n")
         return {"deleted": 0, "upserted": 0, "version": silver_version, "ran": False}
 
@@ -475,6 +494,7 @@ def _incremental_gold_merge(
     print(f"   ✓ Total CDF changes (INSERT/UPDATE/DELETE): {source_count}")
 
     if source_count == 0:
+        _sync_metadata_if_changed(spark, catalog, entity, compliance_entry, schemas)
         control.set_watermark(spark, catalog, schemas["audit"], entity, silver_version, 0, 0, layer="gold")
         print(f"ℹ No new changes in Silver — skipping merge\n")
         return {"deleted": 0, "upserted": 0, "version": silver_version, "ran": True}
@@ -486,6 +506,26 @@ def _incremental_gold_merge(
     # the merge source -- and Delta's MERGE raises "multiple source rows
     # matched" when more than one source row matches the same target row.
     source = cdf.latest_per_key(source, primary_keys)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DQ GATE (CDF batch, BEFORE metadata re-apply and MERGE). Deletes are not
+    # checked (they carry no new values). A failure quarantines the bad rows
+    # and raises, so the watermark is NOT advanced and the next run retries.
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    dq_rules = dq_gold.load_dq_rules(entity, DQ_RULES_DIR)
+    if dq_rules:
+        source = dq_gold.quality_gate(
+            spark, entity, source,
+            dq_gold.scope_checks(dq_rules, "_change_type <> 'delete'"),
+            quarantine_fqn=f"{catalog}.{schemas['gold']}.{entity}_quarantine",
+            label="incremental (Silver CDF)",
+        )
+    else:
+        print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")
+
+    # Metadata is re-applied only after the DQ gate has passed
+    _sync_metadata_if_changed(spark, catalog, entity, compliance_entry, schemas)
 
     # Show sample of what's being processed (uses this entity's actual
     # primary key columns -- a hardcoded column name here previously broke

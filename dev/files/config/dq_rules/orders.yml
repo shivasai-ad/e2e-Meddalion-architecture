@@ -1,0 +1,34 @@
+# Data-quality rules for Gold `orders` (DQX metadata format).
+# criticality: error -> row is quarantined and the run stops
+# criticality: warn  -> row is loaded, the warning is logged
+checks:
+  - name: order_id_not_null
+    criticality: error
+    check:
+      function: is_not_null
+      arguments:
+        column: order_id
+
+  - name: status_allowed_values
+    criticality: error
+    check:
+      function: is_in_list
+      arguments:
+        column: status
+        allowed: ["pending", "completed", "refunded"]
+
+  - name: amount_positive
+    criticality: error
+    check:
+      function: sql_expression
+      arguments:
+        expression: "amount IS NOT NULL AND amount > 0"
+        msg: "amount must be present and greater than 0"
+        columns: [amount]
+
+  - name: customer_name_not_empty
+    criticality: warn
+    check:
+      function: is_not_null_and_not_empty
+      arguments:
+        column: customer_name

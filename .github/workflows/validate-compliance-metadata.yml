@@ -1,0 +1,472 @@
+name: Validate Compliance Metadata
+
+on:
+  pull_request:
+    paths:
+      - dev/files/config/**_compliance_metadata.yml
+      - dev/files/common/gold_compliance_validator.py
+      - .github/workflows/validate-compliance-metadata.yml
+
+jobs:
+  validate-config:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml
+
+      - name: Validate YAML structure
+        id: yaml_check
+        run: |
+          python3 << 'EOF'
+          import yaml
+          import sys
+          import os
+
+          yaml_file = "dev/files/config/gold_compliance_metadata.yml"
+
+          def write_failure(details: str):
+              delimiter = "FAILURE_DETAILS_EOF"
+              with open(os.getenv('GITHUB_OUTPUT'), 'a') as f:
+                  f.write(f"failure_details<<{delimiter}\n")
+                  f.write(details)
+                  f.write(f"\n{delimiter}\n")
+
+          def diagnose(e, file_lines):
+              """Try to pinpoint the specific mistake from the parser's error mark.
+              Returns a human-readable diagnosis string, or None if we can't tell."""
+              mark = getattr(e, "problem_mark", None)
+              if mark is None:
+                  return None
+
+              line_no = mark.line  # 0-indexed
+              if line_no >= len(file_lines):
+                  return None
+
+              bad_line = file_lines[line_no]
+
+              if "\t" in bad_line:
+                  return (
+                      f"Line {line_no + 1} contains a TAB character. YAML requires spaces for "
+                      f"indentation, never tabs:\n```\n{bad_line.rstrip()}\n```"
+                  )
+
+              def indent(s):
+                  return len(s) - len(s.lstrip(" "))
+
+              # Find nearest non-blank lines above/below to compare indentation against.
+              prev_line = next(
+                  (file_lines[i] for i in range(line_no - 1, -1, -1) if file_lines[i].strip()),
+                  None,
+              )
+              next_line = next(
+                  (file_lines[i] for i in range(line_no + 1, len(file_lines)) if file_lines[i].strip()),
+                  None,
+              )
+
+              bad_indent = indent(bad_line)
+
+              # If the lines immediately above and below agree on indentation but this
+              # line doesn't match either, it's almost certainly a stray-space mistake.
+              if (
+                  prev_line is not None
+                  and next_line is not None
+                  and indent(prev_line) == indent(next_line) != bad_indent
+              ):
+                  snippet = "\n".join(
+                      f"{n}: {l.rstrip()}" for n, l in (
+                          (line_no, prev_line.rstrip("\n")) if prev_line else (None, None),
+                          (line_no + 1, bad_line.rstrip("\n")),
+                          (line_no + 2, next_line.rstrip("\n")) if next_line else (None, None),
+                      ) if l is not None
+                  )
+                  return (
+                      f"Line {line_no + 1} is indented differently than the lines around it — "
+                      f"check for extra or missing spaces:\n```\n{snippet}\n```"
+                  )
+
+              return None
+
+          try:
+              with open(yaml_file, "r") as f:
+                  file_lines = f.readlines()
+                  f.seek(0)
+                  config = yaml.safe_load(f)
+          except yaml.YAMLError as e:
+              print(f"ERROR: YAML syntax error in {yaml_file}")
+              print()
+              print(str(e))
+              print()
+
+              specific = diagnose(e, file_lines)
+              if specific:
+                  print("=" * 70)
+                  print("LIKELY CAUSE")
+                  print("=" * 70)
+                  print(specific)
+                  print()
+
+              print("=" * 70)
+              print("COMMON YAML MISTAKES")
+              print("=" * 70)
+              print("""
+          1. Strings with special characters (dashes, colons, etc.) need quotes:
+             WRONG:  description: Fund data - structures
+             RIGHT:  description: "Fund data - structures"
+
+          2. Indentation must use SPACES only, never TABS, and must be consistent:
+             WRONG:  requires_compliance: true
+                       description: "..."
+             RIGHT:  requires_compliance: true
+                     description: "..."
+
+          3. Colons inside string values need quotes:
+             WRONG:  description: data: fund info
+             RIGHT:  description: "data: fund info"
+
+          4. Lists must use dash-space format, one item per line:
+             WRONG:  columns: [col1, col2]
+             RIGHT:  columns:
+                       - col1
+                       - col2
+
+          5. CHECK constraint expressions need quotes:
+             WRONG:  check: currency IS NOT NULL AND length(currency) = 3
+             RIGHT:  check: "currency IS NOT NULL AND length(currency) = 3"
+          """)
+              print("=" * 70)
+              print("FIX THE YAML FILE AND TRY AGAIN")
+              print("=" * 70)
+
+              if specific:
+                  failure_msg = f"**YAML syntax error** in `{yaml_file}`:\n\n{specific}"
+              else:
+                  failure_msg = (
+                      f"**YAML syntax error** in `{yaml_file}`:\n```\n{e}\n```\n"
+                      f"Common causes: unquoted strings with special characters, tabs instead of spaces, "
+                      f"unquoted colons in string values, or bracketed lists instead of dash-space format."
+                  )
+              write_failure(failure_msg)
+              sys.exit(1)
+
+          if not config or "tables" not in config:
+              print("ERROR: Config must have 'tables' key")
+              write_failure(f"**{yaml_file}** is missing the required top-level `tables` key.")
+              sys.exit(1)
+
+          print("✅ YAML syntax valid")
+          print(f"✅ {len(config['tables'])} table(s) defined")
+          EOF
+
+      - name: Get changed tables
+        id: changed
+        run: |
+          python3 << 'EOF'
+          import yaml
+          import subprocess
+          import sys
+          import os
+          import json
+          from pathlib import Path
+
+          print("=" * 70)
+          print("STEP 1: Detecting Changed YAML Files & Tables")
+          print("=" * 70)
+
+          # Get the base and head SHAs from the PR
+          base_sha = os.getenv('BASE_SHA')
+          head_sha = os.getenv('HEAD_SHA')
+          config_dir = "dev/files/config"
+          file_pattern = "*_compliance_metadata.yml"
+
+          print(f"\n📋 Configuration:")
+          print(f"   Base SHA (main):    {base_sha[:8]}...")
+          print(f"   Head SHA (PR):      {head_sha[:8]}...")
+          print(f"   Config dir:         {config_dir}")
+          print(f"   File pattern:       {file_pattern}\n")
+
+          # Get list of changed files from git diff
+          print("📂 Detecting changed YAML files...")
+          try:
+              diff_output = subprocess.run(
+                  ["git", "diff", "--name-only", f"{base_sha}...{head_sha}"],
+                  capture_output=True,
+                  text=True,
+                  check=True
+              ).stdout
+              all_changed_files = [f for f in diff_output.strip().split('\n') if f]
+
+              # Filter to compliance metadata files in config dir
+              changed_yaml_files = [
+                  f for f in all_changed_files
+                  if f.startswith(f"{config_dir}/") and f.endswith("_compliance_metadata.yml")
+              ]
+              print(f"   ✅ Found {len(changed_yaml_files)} changed compliance YAML file(s):")
+              for f in sorted(changed_yaml_files):
+                  print(f"      • {f}")
+          except Exception as e:
+              print(f"   ❌ Error detecting changed files: {e}\n")
+              sys.exit(1)
+
+          if not changed_yaml_files:
+              print(f"\n   ℹ️  No compliance metadata files changed\n")
+              print("=" * 70)
+              print(f"ℹ️  RESULT: No files to validate\n")
+              with open(os.getenv('GITHUB_OUTPUT'), 'a') as f:
+                  f.write("changed_files=\n")
+                  f.write("changed_tables=\n")
+              sys.exit(0)
+
+          print()
+
+          # Process each changed YAML file
+          all_changed_tables = {}  # {filename: [tables]}
+
+          for yaml_path in sorted(changed_yaml_files):
+              print(f"\n📖 Processing: {yaml_path}")
+
+              # Load OLD config from base branch
+              print(f"   Loading from base branch...")
+              try:
+                  old_yaml_content = subprocess.run(
+                      ["git", "show", f"{base_sha}:{yaml_path}"],
+                      capture_output=True,
+                      text=True,
+                      check=True
+                  ).stdout
+                  old_config = yaml.safe_load(old_yaml_content) or {}
+                  print(f"   ✅ Loaded (existing file)")
+              except subprocess.CalledProcessError:
+                  print(f"   ℹ️  File doesn't exist in base branch (new file)")
+                  old_config = {}
+
+              # Load NEW config from PR branch
+              print(f"   Loading from PR branch...")
+              try:
+                  with open(yaml_path, "r") as f:
+                      new_config = yaml.safe_load(f) or {}
+                  print(f"   ✅ Loaded")
+              except Exception as e:
+                  print(f"   ❌ Error loading: {e}")
+                  continue
+
+              # Extract and compare tables
+              old_tables = set((old_config.get("tables") or {}).keys()) if old_config else set()
+              new_tables = set((new_config.get("tables") or {}).keys()) if new_config else set()
+
+              new_tables_set = new_tables - old_tables
+
+              old_table_configs = old_config.get("tables", {}) or {}
+              new_table_configs = new_config.get("tables", {}) or {}
+              modified_tables_set = {
+                  table for table in (old_tables & new_tables)
+                  if old_table_configs.get(table) != new_table_configs.get(table)
+              }
+
+              changed_in_file = new_tables_set | modified_tables_set
+              all_changed_tables[yaml_path] = sorted(changed_in_file)
+
+              print(f"   📊 Summary:")
+              print(f"      NEW:      {len(new_tables_set)} → {sorted(new_tables_set) if new_tables_set else 'None'}")
+              print(f"      MODIFIED: {len(modified_tables_set)} → {sorted(modified_tables_set) if modified_tables_set else 'None'}")
+
+          # Output results
+          print("\n" + "=" * 70)
+          print(f"✅ RESULT: Detected {len(all_changed_tables)} file(s) with changes")
+
+          # Flatten all changed tables with file source
+          changed_files_json = json.dumps(all_changed_tables)
+          changed_tables_flat = ",".join(
+              f"{f}:{t}" for f, tables in all_changed_tables.items() for t in tables
+          )
+
+          print(f"   Files:  {list(all_changed_tables.keys())}")
+          print(f"   Tables: {changed_tables_flat if changed_tables_flat else 'None'}\n")
+
+          with open(os.getenv('GITHUB_OUTPUT'), 'a') as f:
+              f.write(f"changed_files={changed_files_json}\n")
+              f.write(f"changed_tables={changed_tables_flat}\n")
+
+          EOF
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+      - name: Validate compliance config
+        id: validate
+        run: |
+          python3 << 'EOF'
+          import sys
+          import importlib.util
+          import os
+          import json
+
+          print("=" * 70)
+          print("STEP 2: Validating Compliance Configuration (Multi-File)")
+          print("=" * 70)
+
+          # Get changed files and tables from previous step
+          changed_files_json = os.getenv('CHANGED_FILES', '{}')
+          try:
+              changed_files = json.loads(changed_files_json)
+          except json.JSONDecodeError:
+              changed_files = {}
+
+          print(f"\n📥 Input from previous step:")
+          print(f"   Files to validate: {list(changed_files.keys())}")
+          print(f"   Total tables:      {sum(len(t) for t in changed_files.values())}\n")
+
+          if not changed_files:
+              print("=" * 70)
+              print("ℹ️  No files changed — Skipping validation")
+              print("=" * 70 + "\n")
+              print("✅ ALL VALIDATIONS PASSED - No changes to validate!")
+              sys.exit(0)
+
+          # Load the validator module dynamically
+          print("🔧 Loading validator module...")
+          try:
+              spec = importlib.util.spec_from_file_location(
+                  "gold_compliance_validator",
+                  "dev/files/common/gold_compliance_validator.py"
+              )
+              validator = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(validator)
+              print("   ✅ Validator module loaded\n")
+          except Exception as e:
+              print(f"   ❌ Error loading validator: {e}\n")
+              sys.exit(1)
+
+          any_failed = False
+          validation_results = []
+          failure_details = []
+          success_details_by_file = {}
+
+          print("=" * 70)
+          print("🔍 Running Validations Across All Files")
+          print("=" * 70 + "\n")
+
+          # Process each changed YAML file
+          for yaml_path, tables_to_validate in sorted(changed_files.items()):
+              print(f"📄 File: {yaml_path}")
+              print(f"   Tables to validate: {sorted(tables_to_validate)}\n")
+
+              # Load config for this file
+              try:
+                  config = validator.load_compliance_config(yaml_path)
+                  print(f"   ✅ Config loaded ({len(config)} table(s))\n")
+              except Exception as e:
+                  print(f"   ❌ Error loading config: {e}\n")
+                  any_failed = True
+                  failure_details.append(f"**{yaml_path}** — error loading config:\n```\n{e}\n```")
+                  continue
+
+              success_details_by_file[yaml_path] = []
+
+              # Validate each table in this file
+              for table_name in sorted(tables_to_validate):
+                  print(f"   🔄 Validating '{table_name}'...")
+                  try:
+                      result = validator.validate_compliance_config(table_name, config)
+                      if not result["passed"]:
+                          print(f"      ❌ FAILED - {len(result['failures'])} issue(s)")
+                          for i, failure in enumerate(result["failures"], 1):
+                              print(f"\n      [{i}] {failure}\n")
+                              failure_details.append(f"**{yaml_path} → {table_name}** — issue {i}:\n```\n{failure}\n```")
+                          validation_results.append((yaml_path, table_name, False))
+                          any_failed = True
+                      else:
+                          print(f"      ✅ PASSED")
+                          validation_results.append((yaml_path, table_name, True))
+                          success_details_by_file[yaml_path].append(table_name)
+                  except Exception as e:
+                      print(f"      ❌ ERROR: {e}")
+                      validation_results.append((yaml_path, table_name, False))
+                      any_failed = True
+                      failure_details.append(f"**{yaml_path} → {table_name}** — error:\n```\n{e}\n```")
+
+              print()
+
+          # Summary
+          print("=" * 70)
+          print("📋 Final Validation Summary (All Files)")
+          print("=" * 70)
+          passed = sum(1 for _, _, result in validation_results if result)
+          failed = sum(1 for _, _, result in validation_results if not result)
+          print(f"\n   ✅ Passed: {passed}")
+          print(f"   ❌ Failed: {failed}")
+          print(f"   Total:    {len(validation_results)}\n")
+
+          if any_failed:
+              print("❌ VALIDATION FAILED - Please fix the issues above")
+              delimiter = "FAILURE_DETAILS_EOF"
+              with open(os.getenv('GITHUB_OUTPUT'), 'a') as f:
+                  f.write(f"failure_details<<{delimiter}\n")
+                  f.write("\n\n".join(failure_details))
+                  f.write(f"\n{delimiter}\n")
+              sys.exit(1)
+          else:
+              print("✅ ALL VALIDATIONS PASSED - Configuration is compliant!")
+
+              # Build success details per file
+              success_details = "✅ **Source System Configurations Validated**\n\n"
+              for yaml_path, tables in sorted(success_details_by_file.items()):
+                  success_details += f"**{yaml_path}**\n"
+                  for table_name in sorted(tables):
+                      success_details += f"  ✓ {table_name}\n"
+                  success_details += "\n"
+
+              delimiter = "SUCCESS_DETAILS_EOF"
+              with open(os.getenv('GITHUB_OUTPUT'), 'a') as f:
+                  f.write(f"success_details<<{delimiter}\n")
+                  f.write(success_details)
+                  f.write(f"\n{delimiter}\n")
+
+          EOF
+        env:
+          CHANGED_FILES: ${{ steps.changed.outputs.changed_files }}
+
+      - name: Comment on PR (success)
+        if: success()
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const details = process.env.SUCCESS_DETAILS || '✅ All compliance checks passed';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ✅ Compliance Metadata Validation PASSED\n\n${details}\n---\n**Status**: Ready to merge! All compliance requirements satisfied.`
+            })
+        env:
+          SUCCESS_DETAILS: ${{ steps.validate.outputs.success_details }}
+
+      - name: Comment on PR (failure)
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const details = process.env.FAILURE_DETAILS || 'See workflow logs for details.';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❌ **Compliance Metadata Validation FAILED**\n\n${details}\n\nFix the compliance config and push again.`
+            })
+        env:
+          FAILURE_DETAILS: ${{ steps.validate.outputs.failure_details || steps.yaml_check.outputs.failure_details }}
