@@ -6,9 +6,11 @@ Rules are DQX checks (metadata format). Two sources:
   column from silver_config.yml, so primary keys are never duplicated.
 
 Behaviour (same in every layer):
-- error-level failures: rows go to <target>_quarantine in the layer's schema,
-  then the run stops before anything is written.
+- error-level failures: rows go to <target>_quarantine in the layer's schema.
+  Only the passing rows continue, so the run completes.
 - warn-level failures: rows are kept and the warning count is printed.
+- A row that fails in a later run is quarantined and never written, so the
+  target keeps its last good version of that row.
 - An entity with no rules file skips the YAML gate.
 """
 import copy
@@ -76,9 +78,8 @@ def quality_gate(
 ) -> DataFrame:
     """Run checks on df. Returns the rows that may be written.
 
-    If any error-level row fails, the failing rows are appended to
-    quarantine_fqn and a ValueError is raised, so the caller stops
-    before writing anything.
+    Error-level failures are appended to quarantine_fqn and removed from the
+    result. The run does not stop: the returned rows continue to the target.
     """
     print(f"\n{'-'*70}")
     print(f"DQ GATE [{label}] — {entity}: {len(checks)} rule(s)")
@@ -114,8 +115,6 @@ def quality_gate(
         .option("mergeSchema", "true")
         .saveAsTable(quarantine_fqn)
     )
-    print(f"   ✗ {n_err} row(s) written to quarantine: {quarantine_fqn}")
-    raise ValueError(
-        f"DQ FAILED for '{entity}' [{label}]: {n_err} row(s) with error-level "
-        f"failures. Quarantined to {quarantine_fqn}. Nothing was written."
-    )
+    print(f"   ✗ {n_err} row(s) quarantined to {quarantine_fqn}")
+    print(f"   → {n_good} row(s) continue to the target\n")
+    return good_df
