@@ -329,7 +329,7 @@ def _bootstrap_gold_table(
     if dq_rules:
         silver_df = dq.quality_gate(
             spark, entity, silver_df, dq_rules,
-            quarantine_fqn=f"{catalog}.{schemas['gold']}.{entity}_quarantine",
+            quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="bootstrap (Silver)",
         )
     else:
@@ -518,7 +518,7 @@ def _incremental_gold_merge(
         source = dq.quality_gate(
             spark, entity, source,
             dq.scope_checks(dq_rules, "_change_type <> 'delete'"),
-            quarantine_fqn=f"{catalog}.{schemas['gold']}.{entity}_quarantine",
+            quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="incremental (Silver CDF)",
         )
     else:
