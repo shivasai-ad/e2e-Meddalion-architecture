@@ -85,31 +85,37 @@ def quality_gate(
     print(f"{'-'*70}")
 
     engine = get_engine()
+    # DQX (v0.16.0) split semantics:
+    #   good_df = rows with no error-level failure (warn-only rows included),
+    #             result columns already dropped
+    #   bad_df  = rows with error OR warning failures, result columns kept
+    # So error rows are the bad_df rows whose _errors is not null; warn-only
+    # rows are already in good_df and must not stop the run.
     good_df, bad_df = engine.apply_checks_by_metadata_and_split(df, checks)
 
-    n_bad = bad_df.count()
-    n_warn = good_df.filter(F.size("_warnings") > 0).count()
-    good_df = good_df.drop("_errors", "_warnings")
+    error_df = bad_df.where(F.col("_errors").isNotNull())
+    n_err = error_df.count()
+    n_warn = bad_df.where(F.col("_errors").isNull() & F.col("_warnings").isNotNull()).count()
     n_good = good_df.count()
 
-    print(f"   Rows checked:                {n_good + n_bad}")
+    print(f"   Rows checked:                {n_good + n_err}")
     print(f"   Passed (loaded):             {n_good}")
     print(f"   Passed with warnings:        {n_warn}")
-    print(f"   Failed (error, quarantined): {n_bad}")
+    print(f"   Failed (error, quarantined): {n_err}")
 
-    if n_bad == 0:
+    if n_err == 0:
         print(f"   ✓ DQ passed for [{label}]\n")
         return good_df
 
     (
-        bad_df.withColumn("_dq_label", F.lit(label))
+        error_df.withColumn("_dq_label", F.lit(label))
         .withColumn("_dq_run_ts", F.current_timestamp())
         .write.mode("append")
         .option("mergeSchema", "true")
         .saveAsTable(quarantine_fqn)
     )
-    print(f"   ✗ {n_bad} row(s) written to quarantine: {quarantine_fqn}")
+    print(f"   ✗ {n_err} row(s) written to quarantine: {quarantine_fqn}")
     raise ValueError(
-        f"DQ FAILED for '{entity}' [{label}]: {n_bad} row(s) with error-level "
+        f"DQ FAILED for '{entity}' [{label}]: {n_err} row(s) with error-level "
         f"failures. Quarantined to {quarantine_fqn}. Nothing was written."
     )
