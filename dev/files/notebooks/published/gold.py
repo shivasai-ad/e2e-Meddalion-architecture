@@ -76,7 +76,7 @@ CATALOG = get_catalog()
 USE_EXTERNAL = get_use_external_tables()
 AUDIT_BUCKET = get_s3_bucket("audit") if USE_EXTERNAL else None
 CONFIG_HASH_TAG = "metadata_hash"
-DQ_RULES_ROOT = os.path.join(PROJECT_ROOT, "config/dq_rules")
+GOLD_DQ_RULES = os.path.join(PROJECT_ROOT, "config/dq_rules/silver_to_gold.yml")
 
 # Framework-owned audit columns and table properties: same for every Gold
 # table, so these are hardcoded here rather than duplicated per-entity in a
@@ -320,12 +320,13 @@ def _bootstrap_gold_table(
     """Bootstrap: create Gold table, apply metadata, insert all Silver rows."""
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # DQ GATE (Silver, BEFORE any table is created). Error-level failures are
-    # quarantined and stop the run. Entities without a rules file skip the gate.
+    # DQ GATE (Silver, BEFORE any table is created): checks come from silver_to_gold.yml.
+    # Rows that fail any check go to published_exception; the rest continue.
+    # A table with no entry in the rules file skips the gate.
     # ═══════════════════════════════════════════════════════════════════════════
 
     silver_df = spark.table(silver_fqn)
-    dq_rules = dq.load_dq_rules("gold", entity, DQ_RULES_ROOT)
+    dq_rules = dq.load_table_rules(GOLD_DQ_RULES, entity)
     if dq_rules:
         silver_df = dq.quality_gate(
             spark, entity, silver_df, dq_rules,
@@ -508,12 +509,12 @@ def _incremental_gold_merge(
     source = cdf.latest_per_key(source, primary_keys)
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # DQ GATE (CDF batch, BEFORE metadata re-apply and MERGE). Deletes are not
-    # checked (they carry no new values). A failure quarantines the bad rows
-    # and raises, so the watermark is NOT advanced and the next run retries.
+    # DQ GATE (CDF batch, BEFORE metadata re-apply and MERGE): checks come from
+    # silver_to_gold.yml. Deletes are not checked (they carry no new values).
+    # Rows that fail any check go to published_exception; the rest continue.
     # ═══════════════════════════════════════════════════════════════════════════
 
-    dq_rules = dq.load_dq_rules("gold", entity, DQ_RULES_ROOT)
+    dq_rules = dq.load_table_rules(GOLD_DQ_RULES, entity)
     if dq_rules:
         source = dq.quality_gate(
             spark, entity, source,

@@ -14,6 +14,7 @@ notebooks/95_gold_freshness_check.py reads this table to answer "how long
 ago was object X last refreshed?"
 """
 
+from .config_loader import HARNESS_NAMESPACE
 from pyspark.sql import functions as F
 
 GOLD_FRESHNESS_TABLE = "gold_refresh_log"
@@ -41,7 +42,7 @@ def ensure_table(spark, catalog: str, audit_schema: str, use_external: bool = Fa
     if use_external:
         if not bucket:
             raise ValueError("use_external=true but no bucket configured for gold_refresh_log.")
-        loc = f"LOCATION 's3://{bucket}/audit/client_e2e_medallion_metadata_test/gold_refresh_log/'"
+        loc = f"LOCATION 's3://{bucket}/audit/client_{HARNESS_NAMESPACE}/gold_refresh_log/'"
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {fqn} (

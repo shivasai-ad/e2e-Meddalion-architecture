@@ -23,6 +23,7 @@ threading of job context into run_bronze/run_silver/run_gold's own
 signatures needed for this.
 """
 
+from .config_loader import HARNESS_NAMESPACE
 import time
 from contextlib import contextmanager
 
@@ -89,7 +90,7 @@ class AuditLogger:
         if self.use_external:
             if not self.bucket:
                 raise ValueError("use_external=true but no bucket configured for audit_log.")
-            loc = f"LOCATION 's3://{self.bucket}/audit/client_e2e_medallion_metadata_test/audit_log/'"
+            loc = f"LOCATION 's3://{self.bucket}/audit/client_{HARNESS_NAMESPACE}/audit_log/'"
         self.spark.sql(
             f"""
             CREATE TABLE IF NOT EXISTS {self.fqn} (

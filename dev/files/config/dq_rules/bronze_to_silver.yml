@@ -1,0 +1,269 @@
+# Bronze -> Silver data-quality rules. ONE file for every Silver table.
+# Applied to the rows before they are written to Silver.
+# Every check is pass/fail: a row that fails ANY check goes to the formatted_exception
+# quarantine table, and a row that passes all checks continues to Silver.
+# Each check names its own function (is_not_null, is_not_null_and_not_empty, is_in_list,
+# sql_expression, ...). Add or change checks here; no code change is needed.
+tables:
+  orders:
+    checks:
+      - name: orders_order_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: order_id
+      - name: orders_customer_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: customer_name
+      - name: orders_status_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: status
+      - name: orders_amount_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: amount
+      - name: status_allowed_values
+        check:
+          function: is_in_list
+          arguments:
+            column: status
+            allowed: ["'pending'", "'completed'", "'refunded'"]  # DQX: quoted = literal value
+      - name: amount_positive
+        check:
+          function: sql_expression
+          arguments:
+            expression: amount IS NOT NULL AND amount > 0
+            msg: amount must be present and greater than 0
+            columns: ["amount"]
+
+  asset:
+    checks:
+      - name: asset_entity_master_asset_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: entity_master_asset_id
+      - name: asset_asset_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: asset_name
+      - name: asset_asset_type_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: asset_type
+      - name: asset_currency_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: currency
+      - name: asset_status_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: status
+
+  document:
+    checks:
+      - name: document_document_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: document_id
+      - name: document_original_file_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: original_file_name
+      - name: document_classification_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: classification
+      - name: document_document_received_date_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: document_received_date
+
+  document_banking:
+    checks:
+      - name: document_banking_document_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: document_id
+      - name: document_banking_beneficiary_bank_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: beneficiary_bank_name
+      - name: document_banking_bank_location_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: bank_location
+      - name: document_banking_beneficiary_account_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: beneficiary_account_name
+
+  owner:
+    checks:
+      - name: owner_entity_master_owner_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: entity_master_owner_id
+      - name: owner_owner_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: owner_name
+      - name: owner_owner_type_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: owner_type
+
+  performance_metric:
+    checks:
+      - name: performance_metric_performance_metric_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: performance_metric_id
+      - name: performance_metric_metric_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: metric_name
+      - name: performance_metric_period_type_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: period_type
+      - name: performance_metric_metric_value_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: metric_value
+
+  position:
+    checks:
+      - name: position_entity_master_position_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: entity_master_position_id
+      - name: position_owner_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: owner_id
+      - name: position_asset_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: asset_id
+      - name: position_status_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: status
+
+  ref_metric:
+    checks:
+      - name: ref_metric_metric_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: metric_name
+      - name: ref_metric_display_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: display_name
+      - name: ref_metric_category_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: category
+      - name: ref_metric_format_type_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: format_type
+      - name: ref_metric_is_active_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: is_active
+
+  ref_transaction_type:
+    checks:
+      - name: ref_transaction_type_transaction_type_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: transaction_type
+      - name: ref_transaction_type_display_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: display_name
+      - name: ref_transaction_type_category_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: category
+      - name: ref_transaction_type_subcategory_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: subcategory
+      - name: ref_transaction_type_is_active_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: is_active
+
+  transaction:
+    checks:
+      - name: transaction_transaction_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: transaction_id
+      - name: transaction_position_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: position_id
+      - name: transaction_transaction_type_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: transaction_type
+      - name: transaction_amount_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: amount
+      - name: transaction_currency_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: currency
+      - name: transaction_trade_date_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: trade_date
