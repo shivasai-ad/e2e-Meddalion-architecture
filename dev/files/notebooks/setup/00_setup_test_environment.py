@@ -41,6 +41,7 @@ from common.config_loader import (
     get_s3_location,
     get_fqn,
     load_bronze_config,
+    HARNESS_NAMESPACE,
 )
 from common import control, audit_log, schema_audit, gold_freshness
 
@@ -104,7 +105,7 @@ if RESET:
             # mid-CREATE), but stale files may still sit at the fixed
             # LOCATION -- clear it unconditionally so creation below starts
             # from a clean path.
-            location = f"s3://{AUDIT_BUCKET}/audit/client_e2e_medallion_metadata_test/{table_name}/"
+            location = f"s3://{AUDIT_BUCKET}/audit/client_{HARNESS_NAMESPACE}/{table_name}/"
             dbutils.fs.rm(location, recurse=True)
             print(f"  Cleared (possibly stale) files at {location}")
 

@@ -75,8 +75,8 @@ PUBLISHED_BUCKET_DEFAULT = _DB_VARIABLES.get("published_bucket", {}).get("defaul
 # ═══════════════════════════════════════════════════════════════════════════
 # DEFAULTS FROM common/config.py
 # ═══════════════════════════════════════════════════════════════════════════
-SCHEMA_PREFIX = "e2e_medallion_metadata_test"
-HARNESS_NAMESPACE = "e2e_medallion_metadata_test"
+SCHEMA_PREFIX = "e2e_medallion_metadata_v2"
+HARNESS_NAMESPACE = "e2e_medallion_metadata_v2"
 
 # Schema names for each layer
 SCHEMAS = {
