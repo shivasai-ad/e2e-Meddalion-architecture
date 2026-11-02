@@ -43,3 +43,12 @@ targets:
     workspace:
       host: https://dbc-445a81b8-2855.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
+
+  # Dev workspace (dbc-13eada50-8f08, CLI profile `dev`). Uses UC managed tables
+  # so the audit table does not depend on leftover S3 files from earlier runs.
+  dev-workspace:
+    workspace:
+      host: https://dbc-13eada50-8f08.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev-workspace
+    variables:
+      use_external_tables: "false"

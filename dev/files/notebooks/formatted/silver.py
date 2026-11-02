@@ -57,7 +57,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, cdf, audit_log, control, schema_audit
+from common import ddl, cdf, audit_log, control, schema_audit, dq, dq_gate_log
 
 # COMMAND ----------
 
@@ -72,6 +72,7 @@ AUDIT_BUCKET = get_s3_bucket("audit") if USE_EXTERNAL else None
 
 # Load configuration
 SILVER_CONFIG = load_silver_config(os.path.join(PROJECT_ROOT, "config/silver_config.yml"))
+SILVER_DQ_RULES = os.path.join(PROJECT_ROOT, "config/dq_rules/bronze_to_silver.yml")
 CONFIG_ENTITIES = list(SILVER_CONFIG.get("tables", {}).keys())
 
 # Case-insensitive entity lookup: map lowercase keys to actual config keys
@@ -182,7 +183,9 @@ def process_silver_entity(spark, catalog: str, entity: str, config: Dict, schema
     # (config is source of truth). Validates that Bronze has all the columns Silver expects to read.
     # Must run BEFORE any Silver logic, so we catch mismatches early instead of inside a cryptic MERGE error.
     # Include: business columns + mapped audit source columns + _bronze_is_current (used in MERGE condition)
-    mapped_source_cols = [(col, "TIMESTAMP") for col in mapped_audit.values()]  # Maps to Bronze source columns
+    # Type of each Bronze source column = the type declared for its Silver audit column
+    # in silver_config.yml (e.g. _bronze_hash -> _row_hash STRING). Not hardcoded to TIMESTAMP.
+    mapped_source_cols = [(bronze_col, audit_col_types[silver_col]) for silver_col, bronze_col in mapped_audit.items()]
     is_current_col = [("_bronze_is_current", "BOOLEAN")]  # Used in MERGE ON condition
     expected_from_bronze = business_columns + mapped_source_cols + is_current_col
 
@@ -284,6 +287,21 @@ def _bootstrap_silver_table(
     for fw_col in framework_audit:
         new_rows = new_rows.withColumn(fw_col, F.lit(atomic_ts).cast(audit_col_types[fw_col]))
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DQ GATE (Bronze -> Silver, first-time load): checks come from bronze_to_silver.yml.
+    # Rows that fail any check go to formatted_exception; the rest continue to the insert.
+    # ═══════════════════════════════════════════════════════════════════════════
+    silver_rules = dq.load_table_rules(SILVER_DQ_RULES, entity)
+    if silver_rules:
+        new_rows = dq.quality_gate(
+            spark, entity, new_rows, silver_rules,
+            quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
+            label="bootstrap (Bronze)",
+            gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "silver", f"{catalog}.{schemas['silver']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+        )
+    else:
+        print(f"ℹ No DQ rules for '{entity}' in bronze_to_silver.yml — skipping DQ gate")
+
     row_count = new_rows.count()
     if row_count > 0:
         with audit_logger.audit(silver_fqn, audit_log.Action.INSERT) as log_ctx:
@@ -355,6 +373,23 @@ def _incremental_silver_merge(
     # commits) to a single UPDATE, and a genuine delete (one row,
     # is_current=FALSE, no newer row) to a DELETE.
     changes = cdf.latest_per_key(changes, primary_keys)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DQ GATE (Bronze CDF -> Silver, before MERGE): checks come from bronze_to_silver.yml.
+    # Rows that fail any check go to formatted_exception; the rest continue to the MERGE.
+    # ═══════════════════════════════════════════════════════════════════════════
+    silver_rules = dq.load_table_rules(SILVER_DQ_RULES, entity)
+    if silver_rules:
+        changes = dq.quality_gate(
+            spark, entity, changes,
+            # Deleted rows (_bronze_is_current = FALSE) are not checked: they only remove a key
+            dq.scope_checks(silver_rules, "_bronze_is_current = TRUE"),
+            quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
+            label="incremental (Bronze CDF)",
+            gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "silver", f"{catalog}.{schemas['silver']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+        )
+    else:
+        print(f"ℹ No DQ rules for '{entity}' in bronze_to_silver.yml — skipping DQ gate")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # BUILD THE MERGE SOURCE: business cols + mapped audit cols (renamed from

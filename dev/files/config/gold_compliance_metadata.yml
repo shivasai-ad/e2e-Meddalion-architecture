@@ -663,6 +663,12 @@ tables:
       - name: pk_document_banking_id
         type: "PRIMARY_KEY"
         columns: ["document_id"]
+      - name: fk_document_banking_document_id
+        type: "FOREIGN_KEY"
+        columns: ["document_id"]
+        references:
+          table: "document"
+          columns: ["document_id"]
 
   owner:
     requires_compliance: true
@@ -742,6 +748,12 @@ tables:
       - name: pk_performance_metric_id
         type: "PRIMARY_KEY"
         columns: ["performance_metric_id"]
+      - name: fk_performance_metric_metric_name
+        type: "FOREIGN_KEY"
+        columns: ["metric_name"]
+        references:
+          table: "ref_metric"
+          columns: ["metric_name"]
 
   position:
     requires_compliance: true
@@ -784,6 +796,18 @@ tables:
       - name: pk_position_id
         type: "PRIMARY_KEY"
         columns: ["entity_master_position_id"]
+      - name: fk_position_owner_id
+        type: "FOREIGN_KEY"
+        columns: ["owner_id"]
+        references:
+          table: "owner"
+          columns: ["entity_master_owner_id"]
+      - name: fk_position_asset_id
+        type: "FOREIGN_KEY"
+        columns: ["asset_id"]
+        references:
+          table: "asset"
+          columns: ["entity_master_asset_id"]
 
   ref_metric:
     requires_compliance: true
@@ -930,6 +954,195 @@ tables:
       - name: pk_transaction_id
         type: "PRIMARY_KEY"
         columns: ["transaction_id"]
+      - name: fk_transaction_position_id
+        type: "FOREIGN_KEY"
+        columns: ["position_id"]
+        references:
+          table: "position"
+          columns: ["entity_master_position_id"]
+      - name: fk_transaction_transaction_type
+        type: "FOREIGN_KEY"
+        columns: ["transaction_type"]
+        references:
+          table: "ref_transaction_type"
+          columns: ["transaction_type"]
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DERIVED GOLD TABLES (joins and aggregations of other Gold tables)
+  # Built by notebooks/published/gold_published.py from the SQL in
+  # config/gold_derived_tables.yml. Recomputed in full on every run.
+  # ─────────────────────────────────────────────────────────────────────────
+
+  transaction_detail:
+    requires_compliance: true
+    description: "Transaction detail — every transaction with its position, owner and asset details (join)"
+    owner: "data-engineers"
+    tags:
+      source_system: "transaction_system"
+      source_squad: "data-team"
+      dataset: "transaction_detail"
+      data_owner: "Portfolio Management"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      transaction_id:
+        type: STRING
+        description: "Unique transaction identifier (primary key)"
+        tags:
+          sensitivity: internal
+      trade_date:
+        type: DATE
+        description: "Date the transaction was traded"
+        tags:
+          sensitivity: internal
+      transaction_type:
+        type: STRING
+        description: "Type of transaction (for example BUY, SELL, DIV)"
+        tags:
+          sensitivity: public
+      amount:
+        type: DOUBLE
+        description: "Transaction amount in the transaction currency"
+        tags:
+          sensitivity: confidential
+      currency:
+        type: STRING
+        description: "Currency of the transaction"
+        tags:
+          sensitivity: public
+      position_id:
+        type: STRING
+        description: "Position the transaction belongs to"
+        tags:
+          sensitivity: internal
+      owner_id:
+        type: STRING
+        description: "Owner of the position"
+        tags:
+          sensitivity: internal
+      owner_name:
+        type: STRING
+        description: "Name of the owner of the position"
+        tags:
+          sensitivity: confidential
+      asset_id:
+        type: STRING
+        description: "Asset held in the position"
+        tags:
+          sensitivity: internal
+      asset_name:
+        type: STRING
+        description: "Name of the asset held in the position"
+        tags:
+          sensitivity: public
+      asset_type:
+        type: STRING
+        description: "Type of the asset held in the position"
+        tags:
+          sensitivity: public
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_transaction_detail_id
+        type: "PRIMARY_KEY"
+        columns: ["transaction_id"]
+
+  order_status_summary:
+    requires_compliance: true
+    description: "Order summary — order count and amounts per order status (aggregation)"
+    owner: "data-engineers"
+    tags:
+      source_system: "orders_system"
+      source_squad: "data-team"
+      dataset: "order_status_summary"
+      data_owner: "Sales Operations"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      status:
+        type: STRING
+        description: "Order status (primary key)"
+        tags:
+          sensitivity: public
+      order_count:
+        type: BIGINT
+        description: "Number of orders with this status"
+        tags:
+          sensitivity: internal
+      total_amount:
+        type: DOUBLE
+        description: "Total order amount for this status"
+        tags:
+          sensitivity: confidential
+      avg_amount:
+        type: DOUBLE
+        description: "Average order amount for this status"
+        tags:
+          sensitivity: confidential
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_order_status_summary
+        type: "PRIMARY_KEY"
+        columns: ["status"]
+
+  owner_exposure:
+    requires_compliance: true
+    description: "Owner exposure — transaction count and amounts per owner (join and aggregation)"
+    owner: "data-engineers"
+    tags:
+      source_system: "transaction_system"
+      source_squad: "data-team"
+      dataset: "owner_exposure"
+      data_owner: "Portfolio Management"
+      refresh_cadence: daily
+      client_id: "default_client"
+    columns:
+      owner_id:
+        type: STRING
+        description: "Owner identifier (primary key)"
+        tags:
+          sensitivity: internal
+      owner_name:
+        type: STRING
+        description: "Name of the owner"
+        tags:
+          sensitivity: confidential
+      txn_count:
+        type: BIGINT
+        description: "Number of transactions for this owner"
+        tags:
+          sensitivity: internal
+      total_amount:
+        type: DOUBLE
+        description: "Total transaction amount for this owner"
+        tags:
+          sensitivity: confidential
+      avg_amount:
+        type: DOUBLE
+        description: "Average transaction amount for this owner"
+        tags:
+          sensitivity: confidential
+      last_trade_date:
+        type: DATE
+        description: "Most recent trade date for this owner"
+        tags:
+          sensitivity: internal
+      _gold_refreshed_at:
+        type: TIMESTAMP
+        description: "Timestamp when Gold table was last refreshed"
+        tags:
+          sensitivity: internal
+    constraints:
+      - name: pk_owner_exposure
+        type: "PRIMARY_KEY"
+        columns: ["owner_id"]
 
   # asset:
   #   requires_compliance: true

@@ -18,6 +18,8 @@ itself -- right before it's read) so drift is logged the same run it's first
 observed, not one run late.
 """
 
+from .config_loader import HARNESS_NAMESPACE
+
 import json
 
 from pyspark.sql import functions as F
@@ -50,7 +52,7 @@ def ensure_table(spark, catalog: str, audit_schema: str, use_external: bool = Fa
     if use_external:
         if not bucket:
             raise ValueError("use_external=true but no bucket configured for schema_audit_log.")
-        loc = f"LOCATION 's3://{bucket}/audit/client_e2e_medallion_metadata_test/schema_audit_log/'"
+        loc = f"LOCATION 's3://{bucket}/audit/client_{HARNESS_NAMESPACE}/schema_audit_log/'"
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {fqn} (

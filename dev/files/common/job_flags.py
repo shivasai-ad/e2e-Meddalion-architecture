@@ -12,12 +12,14 @@ UPDATE/DELETE); `get()` returns the value from the row with the latest
 `insertion_timestamp` for that (job_name, key) pair, or `default_value` if
 none exists yet -- that absence is how a first-ever run is detected.
 
-External table at `s3://{bucket}/audit/client_e2e_medallion_metadata_test/job_flags/`
+External table at `s3://{bucket}/audit/client_{HARNESS_NAMESPACE}/job_flags/`
 when use_external=True, matching the doc's own LOCATION for this exact
 table. Kept self-contained (no import of common/ddl.py) on purpose -- the
 doc frames job_flags.py as a single standalone file you `%run`, with no
 other dependencies.
 """
+
+from .config_loader import HARNESS_NAMESPACE
 
 JOB_FLAGS_TABLE = "job_flags"
 
@@ -41,7 +43,7 @@ def ensure_table(spark, catalog: str, audit_schema: str, use_external: bool = Fa
     if use_external:
         if not bucket:
             raise ValueError("use_external=true but no bucket configured for job_flags.")
-        loc = f"LOCATION 's3://{bucket}/audit/client_e2e_medallion_metadata_test/job_flags/'"
+        loc = f"LOCATION 's3://{bucket}/audit/client_{HARNESS_NAMESPACE}/job_flags/'"
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {fqn} (

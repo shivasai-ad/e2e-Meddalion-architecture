@@ -1,0 +1,64 @@
+# Derived Gold tables: built from other Gold tables with joins and/or aggregations.
+#
+# Built by notebooks/published/gold_published.py, in the same run as the regular Gold tables.
+# Each table is recomputed in full on every run, passed through the DQ gate, and only
+# the rows that pass are written. Every table here also needs:
+#   - a compliance entry in config/gold_compliance_metadata.yml (columns, owner, tags, primary key)
+#   - rules in config/dq_rules/silver_to_gold.yml under the same name
+# The SQL must return exactly the columns listed in the compliance entry.
+#
+# {gold} is replaced with `<catalog>`.`<gold schema>`.
+#
+# kind:
+#   join            rows from several tables joined together (no aggregation)
+#   aggregate       one table grouped and summarised
+#   join_aggregate  several tables joined, then grouped and summarised
+tables:
+  transaction_detail:
+    kind: join
+    description: "Every transaction with its position, owner and asset details (join of transaction, position, owner and asset)"
+    sql: |
+      SELECT
+        t.transaction_id,
+        t.trade_date,
+        t.transaction_type,
+        t.amount,
+        t.currency,
+        p.entity_master_position_id AS position_id,
+        o.entity_master_owner_id    AS owner_id,
+        o.owner_name,
+        a.entity_master_asset_id    AS asset_id,
+        a.asset_name,
+        a.asset_type
+      FROM {gold}.`transaction` t
+      JOIN {gold}.`position` p ON t.position_id = p.entity_master_position_id
+      JOIN {gold}.owner o      ON p.owner_id    = o.entity_master_owner_id
+      JOIN {gold}.asset a      ON p.asset_id    = a.entity_master_asset_id
+
+  order_status_summary:
+    kind: aggregate
+    description: "Order count and amounts per order status (aggregation of orders)"
+    sql: |
+      SELECT
+        status,
+        COUNT(*)                AS order_count,
+        ROUND(SUM(amount), 2)   AS total_amount,
+        ROUND(AVG(amount), 2)   AS avg_amount
+      FROM {gold}.orders
+      GROUP BY status
+
+  owner_exposure:
+    kind: join_aggregate
+    description: "Transaction count and amounts per owner (join of transaction, position and owner, then aggregation)"
+    sql: |
+      SELECT
+        o.entity_master_owner_id AS owner_id,
+        o.owner_name,
+        COUNT(*)                 AS txn_count,
+        ROUND(SUM(t.amount), 2)  AS total_amount,
+        ROUND(AVG(t.amount), 2)  AS avg_amount,
+        MAX(t.trade_date)        AS last_trade_date
+      FROM {gold}.`transaction` t
+      JOIN {gold}.`position` p ON t.position_id = p.entity_master_position_id
+      JOIN {gold}.owner o      ON p.owner_id    = o.entity_master_owner_id
+      GROUP BY o.entity_master_owner_id, o.owner_name
