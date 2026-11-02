@@ -45,7 +45,7 @@ resources:
           depends_on:
             - task_key: silver_conform
           notebook_task:
-            notebook_path: ${workspace.file_path}/notebooks/published/gold
+            notebook_path: ${workspace.file_path}/notebooks/published/gold_published
             base_parameters:
               entity: "{{job.parameters.entity}}"
             source: WORKSPACE

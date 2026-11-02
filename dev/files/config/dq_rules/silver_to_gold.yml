@@ -34,7 +34,7 @@ tables:
           function: is_in_list
           arguments:
             column: status
-            allowed: ['pending', 'completed', 'refunded']
+            allowed: ["'pending'", "'completed'", "'refunded'"]  # DQX: quoted = literal value
       - name: amount_positive
         check:
           function: sql_expression
@@ -180,6 +180,22 @@ tables:
           function: is_not_null_and_not_empty
           arguments:
             column: status
+      # Parent must exist: the owner_id / asset_id must be present in the Gold parent tables.
+      # (Unity Catalog foreign keys are informational, so this rule is what enforces them.)
+      - name: position_owner_exists
+        check:
+          function: foreign_key
+          arguments:
+            columns: ["owner_id"]
+            ref_columns: ["entity_master_owner_id"]
+            ref_table: rls_testing.e2e_medallion_metadata_v2_gold.owner
+      - name: position_asset_exists
+        check:
+          function: foreign_key
+          arguments:
+            columns: ["asset_id"]
+            ref_columns: ["entity_master_asset_id"]
+            ref_table: rls_testing.e2e_medallion_metadata_v2_gold.asset
 
   ref_metric:
     checks:
@@ -269,3 +285,111 @@ tables:
           function: is_not_null
           arguments:
             column: trade_date
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DERIVED GOLD TABLES (config/gold_derived_tables.yml)
+  # The gate runs on the finished table, after the joins and aggregations, so
+  # these rules name the columns of the derived table. Aggregate and outlier
+  # checks look at the whole table (or one group), and a failing group is
+  # quarantined as a whole.
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # JOIN: transaction + position + owner + asset
+  transaction_detail:
+    checks:
+      - name: transaction_detail_id_format
+        check:
+          function: regex_match
+          arguments:
+            column: transaction_id
+            regex: "^TXN-[0-9]+$"
+      - name: transaction_detail_amount_and_names_present
+        check:
+          function: sql_expression
+          arguments:
+            expression: amount IS NOT NULL AND amount > 0 AND owner_name IS NOT NULL AND asset_name IS NOT NULL
+            msg: amount must be above 0, and the owner and asset names must be present after the join
+            columns: ["amount", "owner_name", "asset_name"]
+      - name: transaction_detail_minimum_rows
+        check:
+          function: is_aggr_not_less_than
+          arguments:
+            column: transaction_id
+            aggr_type: count
+            limit: 10
+      - name: transaction_detail_amount_no_outliers
+        check:
+          function: has_no_outliers
+          arguments:
+            column: amount
+      - name: transaction_detail_daily_total_no_outliers
+        check:
+          function: has_no_aggr_outliers
+          arguments:
+            column: amount
+            time_column: trade_date
+            aggr_type: sum
+
+  # AGGREGATE: orders grouped by status
+  order_status_summary:
+    checks:
+      - name: order_status_summary_status_format
+        check:
+          function: regex_match
+          arguments:
+            column: status
+            regex: "^(pending|completed|refunded)$"
+      - name: order_status_summary_counts_and_amounts_valid
+        check:
+          function: sql_expression
+          arguments:
+            expression: order_count > 0 AND total_amount >= 0 AND avg_amount > 0
+            msg: order_count must be above 0 and the amounts must not be negative
+            columns: ["order_count", "total_amount", "avg_amount"]
+      - name: order_status_summary_minimum_groups
+        check:
+          function: is_aggr_not_less_than
+          arguments:
+            column: status
+            aggr_type: count
+            limit: 3
+      # Demo threshold: a status whose total goes above 400 is held back.
+      - name: order_status_summary_total_cap
+        check:
+          function: is_aggr_not_greater_than
+          arguments:
+            column: total_amount
+            aggr_type: sum
+            limit: 400
+            group_by: ["status"]
+
+  # JOIN + AGGREGATE: transaction + position + owner, grouped by owner
+  owner_exposure:
+    checks:
+      - name: owner_exposure_owner_id_format
+        check:
+          function: regex_match
+          arguments:
+            column: owner_id
+            regex: "^OWN-[0-9]+$"
+      - name: owner_exposure_totals_consistent
+        check:
+          function: sql_expression
+          arguments:
+            expression: txn_count > 0 AND total_amount >= 0 AND abs(avg_amount * txn_count - total_amount) < 1
+            msg: txn_count must be above 0, and the total must match the average times the count
+            columns: ["txn_count", "total_amount", "avg_amount"]
+      - name: owner_exposure_minimum_owners
+        check:
+          function: is_aggr_not_less_than
+          arguments:
+            column: owner_id
+            aggr_type: count
+            limit: 2
+      - name: owner_exposure_total_cap
+        check:
+          function: is_aggr_not_greater_than
+          arguments:
+            column: total_amount
+            aggr_type: sum
+            limit: 1000000

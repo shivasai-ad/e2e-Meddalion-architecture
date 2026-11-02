@@ -219,6 +219,18 @@ def get_constraint_info(catalog: str, schema: str, table_name: str, constraint_n
                 """).collect()
                 return {"type": "PRIMARY_KEY", "columns": [r.column_name for r in col_rows]}
 
+            elif constraint_type == "FOREIGN KEY":
+                col_rows = spark.sql(f"""
+                    SELECT column_name
+                    FROM system.information_schema.key_column_usage
+                    WHERE table_catalog = '{catalog}'
+                      AND table_schema = '{schema}'
+                      AND table_name = '{table_name}'
+                      AND constraint_name = '{constraint_name}'
+                    ORDER BY ordinal_position
+                """).collect()
+                return {"type": "FOREIGN_KEY", "columns": [r.column_name for r in col_rows]}
+
             elif constraint_type == "CHECK":
                 check_rows = spark.sql(f"""
                     SELECT check_clause
@@ -480,6 +492,22 @@ def validate_compliance_config(table_name: str, config: dict) -> dict:
                             f"           type: \"PRIMARY_KEY\"\n"
                             f"           columns: [\"<column_name>\"]\n"
                         )
+                elif constraint.get("type") == "FOREIGN_KEY":
+                    ref = constraint.get("references") or {}#getting the references
+                    cols = constraint.get("columns") or []#getting the columns
+                    ref_cols = ref.get("columns") or []#get the columns in the references 
+                    if not cols or not ref.get("table") or not ref_cols or len(cols) != len(ref_cols):
+                        failures.append(
+                            f"ERROR: FOREIGN_KEY constraint '{constraint.get('name')}' needs 'columns' and "
+                            f"'references' (a 'table' and the same number of 'columns')\n"
+                            f"  FIX: Use this shape in '{table_name}' → 'constraints':\n"
+                            f"         - name: \"{constraint.get('name', 'fk_<table>_<column>')}\"\n"
+                            f"           type: \"FOREIGN_KEY\"\n"
+                            f"           columns: [\"<column_in_this_table>\"]\n"
+                            f"           references:\n"
+                            f"             table: \"<referenced_table>\"\n"
+                            f"             columns: [\"<primary_key_column_of_that_table>\"]"
+                        )
                 elif constraint.get("type") == "CHECK":
                     if not constraint.get("check"):
                         failures.append(
@@ -646,6 +674,34 @@ def apply_compliance_metadata(
                 spark.sql(f"ALTER TABLE {full_name} ADD CONSTRAINT {name} PRIMARY KEY ({cols_str})")
                 constraints_applied += 1
                 logger.info(f"[{table_name}] PRIMARY_KEY '{name}' applied")
+
+            elif constraint_type == "FOREIGN_KEY":
+                columns = constraint.get("columns", [])
+                ref = constraint.get("references") or {}
+                ref_table = ref.get("table", "")
+                ref_columns = ref.get("columns", [])
+                if not columns or not ref_table or not ref_columns:
+                    continue
+
+                # Unity Catalog foreign keys are informational: they are not enforced.
+                # The referenced table is expected in the same catalog and schema, and
+                # must already exist with a PRIMARY KEY on the referenced columns.
+                if existing and existing.get("type") == "FOREIGN_KEY":
+                    existing_cols = [c.lower() for c in existing.get("columns", [])]
+                    if existing_cols == [c.lower() for c in columns]:
+                        logger.info(f"[{table_name}] FOREIGN_KEY '{name}' unchanged — skipped")
+                        continue
+                    logger.info(f"[{table_name}] FOREIGN_KEY '{name}' columns changed — dropping and recreating")
+                    spark.sql(f"ALTER TABLE {full_name} DROP CONSTRAINT {name}")
+
+                cols_str = ", ".join(f"`{col}`" for col in columns)
+                ref_cols_str = ", ".join(f"`{col}`" for col in ref_columns)
+                spark.sql(
+                    f"ALTER TABLE {full_name} ADD CONSTRAINT {name} FOREIGN KEY ({cols_str}) "
+                    f"REFERENCES `{catalog}`.`{schema}`.`{ref_table}` ({ref_cols_str})"
+                )
+                constraints_applied += 1
+                logger.info(f"[{table_name}] FOREIGN_KEY '{name}' applied")
 
             elif constraint_type == "CHECK":
                 check = constraint.get("check", "")

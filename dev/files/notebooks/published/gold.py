@@ -57,7 +57,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, audit_log, control, schema_audit, cdf, dq
+from common import ddl, audit_log, control, schema_audit, cdf, dq, dq_gate_log
 from common.gold_compliance_validator import (
     load_compliance_config,
     compute_config_hash,
@@ -99,7 +99,12 @@ COMPLIANCE_CONFIG = load_compliance_config(
     os.path.join(PROJECT_ROOT, "config/gold_compliance_metadata.yml")
 )
 
-CONFIG_ENTITIES = list(COMPLIANCE_CONFIG.keys())
+# Derived tables (joins / aggregations) have no Silver table of their own.
+# They are built by gold_published.py, so this notebook skips them.
+import yaml
+with open(os.path.join(PROJECT_ROOT, "config/gold_derived_tables.yml"), encoding="utf-8") as _f:
+    _DERIVED_NAMES = set((yaml.safe_load(_f) or {}).get("tables", {}))
+CONFIG_ENTITIES = [e for e in COMPLIANCE_CONFIG.keys() if e not in _DERIVED_NAMES]
 
 # Case-insensitive entity lookup: map lowercase keys to actual config keys
 entity_map = {key.lower(): key for key in CONFIG_ENTITIES}
@@ -112,6 +117,34 @@ if entity_normalized != "all":
     ENTITIES = [entity_map[entity_normalized]]  # Use actual config key
 else:
     ENTITIES = CONFIG_ENTITIES  # Use all entities as-is
+
+
+def order_parents_first(entities: List[str], config: Dict) -> List[str]:
+    """Order entities so a table referenced by a FOREIGN_KEY is processed before
+    the table that references it. A foreign key can only be added once the
+    referenced table exists and has its PRIMARY KEY. Config order is kept
+    otherwise."""
+    parents = {
+        e: {
+            c["references"]["table"]
+            for c in (config.get(e) or {}).get("constraints", [])
+            if c.get("type") == "FOREIGN_KEY"
+            and (c.get("references") or {}).get("table") in entities
+            and c["references"]["table"] != e
+        }
+        for e in entities
+    }
+    ordered: List[str] = []
+    while len(ordered) < len(entities):
+        ready = [e for e in entities if e not in ordered and parents[e] <= set(ordered)]
+        if not ready:
+            stuck = [e for e in entities if e not in ordered]
+            raise ValueError(f"Circular FOREIGN_KEY references among: {stuck}")
+        ordered.extend(ready)
+    return ordered
+
+
+ENTITIES = order_parents_first(ENTITIES, COMPLIANCE_CONFIG)
 
 print(f"Processing Gold for entities: {ENTITIES}")
 
@@ -332,6 +365,7 @@ def _bootstrap_gold_table(
             spark, entity, silver_df, dq_rules,
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="bootstrap (Silver)",
+            gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
         )
     else:
         print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")
@@ -521,6 +555,7 @@ def _incremental_gold_merge(
             dq.scope_checks(dq_rules, "_change_type <> 'delete'"),
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="incremental (Silver CDF)",
+            gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
         )
     else:
         print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")

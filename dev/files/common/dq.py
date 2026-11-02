@@ -73,11 +73,14 @@ def quality_gate(
     checks: List[Dict],
     quarantine_fqn: str,
     label: str,
+    gate_log=None,
 ) -> DataFrame:
     """Run checks on df. Returns the rows that passed every check.
 
     Rows that fail any check are appended to quarantine_fqn and are not returned.
     The run does not stop: the returned rows continue to the target.
+    If gate_log (a dq_gate_log.DqGateLogger) is given, one row with the counts and the
+    failed rules is written for this run, including a run where every row passed.
     """
     print(f"\n{'-'*70}")
     print(f"DQ GATE [{label}] — {entity}: {len(checks)} check(s)")
@@ -97,7 +100,18 @@ def quality_gate(
 
     if n_bad == 0:
         print(f"   ✓ DQ passed for [{label}]\n")
+        if gate_log:
+            gate_log.log(entity, label, n_good, n_good, 0, {})
         return good_df
+
+    # Rows failed per rule: DQX keeps the failed checks of each bad row in `_errors`
+    failed_rules = {
+        r["rule"]: r["n"]
+        for r in bad_df.select(F.explode("_errors").alias("e"))
+        .groupBy(F.col("e.name").alias("rule"))
+        .agg(F.count("*").alias("n"))
+        .collect()
+    }
 
     (
         bad_df.withColumn("_dq_label", F.lit(label))
@@ -108,4 +122,6 @@ def quality_gate(
     )
     print(f"   ✗ {n_bad} row(s) quarantined to {quarantine_fqn}")
     print(f"   → {n_good} row(s) continue to the target\n")
+    if gate_log:
+        gate_log.log(entity, label, n_good + n_bad, n_good, n_bad, failed_rules, quarantine_fqn)
     return good_df
