@@ -65,7 +65,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, audit_log, control, schema_audit, cdf, dq, dq_gate_log
+from common import ddl, audit_log, control, schema_audit, cdf, dq, dq_gate_log, job_context
 from common.gold_compliance_validator import (
     load_compliance_config,
     compute_config_hash,
@@ -78,6 +78,9 @@ from common.gold_compliance_validator import (
 # Widget for entity selection
 dbutils.widgets.text("entity", "ALL", label="Entity (or ALL)")
 ENTITY = dbutils.widgets.get("entity").strip()
+for _name in ("job_id", "job_run_id", "task_run_id", "task_key"):
+    dbutils.widgets.text(_name, "")  # set by the job (base_parameters), for the audit logs
+job_context.set_from_widgets(dbutils)
 
 # Constants
 CATALOG = get_catalog()
