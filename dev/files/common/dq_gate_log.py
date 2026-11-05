@@ -13,19 +13,11 @@ The table is created on the first log() if it does not exist yet.
 """
 
 from .config_loader import HARNESS_NAMESPACE
+from .job_context import job_value
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
 DQ_GATE_LOG_TABLE = "dq_gate_log"
-
-
-def _safe_conf_get(spark, key):
-    # spark.conf.get(key, None) on Spark Connect (serverless) raises CONFIG_NOT_AVAILABLE
-    # instead of returning the default - same handling as audit_log.py.
-    try:
-        return spark.conf.get(key, None)
-    except Exception:
-        return None
 
 
 class DqGateLogger:
@@ -96,10 +88,10 @@ class DqGateLogger:
             {k: int(v) for k, v in (failed_rules or {}).items()} or None,
             quarantine_table if rows_quarantined else None,
             actor,
-            _safe_conf_get(self.spark, "spark.databricks.job.id"),
-            _safe_conf_get(self.spark, "spark.databricks.job.runId"),
-            _safe_conf_get(self.spark, "spark.databricks.task.runId"),
-            _safe_conf_get(self.spark, "spark.databricks.job.taskKey"),
+            job_value(self.spark, "spark.databricks.job.id", "job_id"),
+            job_value(self.spark, "spark.databricks.job.runId", "job_run_id"),
+            job_value(self.spark, "spark.databricks.task.runId", "task_run_id"),
+            job_value(self.spark, "spark.databricks.job.taskKey", "task_key"),
         )]
         # Explicit schema: several columns are legitimately None on a clean run.
         row_schema = T.StructType([

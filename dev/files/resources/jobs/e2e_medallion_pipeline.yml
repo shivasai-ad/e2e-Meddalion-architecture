@@ -28,6 +28,10 @@ resources:
             notebook_path: ${workspace.file_path}/notebooks/formatted_stg/bronze
             base_parameters:
               entity: "{{job.parameters.entity}}"
+              job_id: "{{job.id}}"
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
+              task_key: "{{task.name}}"
             source: WORKSPACE
           environment_key: serverless_env
 
@@ -38,6 +42,10 @@ resources:
             notebook_path: ${workspace.file_path}/notebooks/formatted/silver
             base_parameters:
               entity: "{{job.parameters.entity}}"
+              job_id: "{{job.id}}"
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
+              task_key: "{{task.name}}"
             source: WORKSPACE
           environment_key: serverless_env
 
@@ -48,6 +56,10 @@ resources:
             notebook_path: ${workspace.file_path}/notebooks/published/gold_published
             base_parameters:
               entity: "{{job.parameters.entity}}"
+              job_id: "{{job.id}}"
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
+              task_key: "{{task.name}}"
             source: WORKSPACE
           environment_key: serverless_env
 
