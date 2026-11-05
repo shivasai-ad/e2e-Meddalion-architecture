@@ -24,23 +24,12 @@ signatures needed for this.
 """
 
 from .config_loader import HARNESS_NAMESPACE
+from .job_context import job_value
 import time
 from contextlib import contextmanager
 
 from pyspark.sql import functions as F
 
-
-def _safe_conf_get(spark, key):
-    """spark.conf.get(key, None) on Spark Connect (serverless) raises
-    AnalysisException [CONFIG_NOT_AVAILABLE...] instead of returning the
-    default when the config is unset/disallowed-for-read -- unlike classic
-    Spark, where the default is returned silently. Catch broadly here since
-    the failure mode is only "config not available", never a real error we'd
-    want surfaced from an audit-logging path."""
-    try:
-        return spark.conf.get(key, None)
-    except Exception:
-        return None
 
 AUDIT_LOG_TABLE = "audit_log"
 
@@ -142,10 +131,10 @@ class AuditLogger:
         # Only set when this write is running as a job task; None otherwise
         # (interactive notebook, pytest) -- same fallback as before, now
         # actually populated when the context exists instead of always NULL.
-        job_id = _safe_conf_get(self.spark, "spark.databricks.job.id")
-        run_id = _safe_conf_get(self.spark, "spark.databricks.job.runId")
-        task_run_id = _safe_conf_get(self.spark, "spark.databricks.job.taskRunId")
-        task_key = _safe_conf_get(self.spark, "spark.databricks.job.taskKey")
+        job_id = job_value(self.spark, "spark.databricks.job.id", "job_id")
+        run_id = job_value(self.spark, "spark.databricks.job.runId", "job_run_id")
+        task_run_id = job_value(self.spark, "spark.databricks.job.taskRunId", "task_run_id")
+        task_key = job_value(self.spark, "spark.databricks.job.taskKey", "task_key")
         df = (
             df.withColumn("event_timestamp", F.current_timestamp())
             .withColumn("actor", F.current_user())
