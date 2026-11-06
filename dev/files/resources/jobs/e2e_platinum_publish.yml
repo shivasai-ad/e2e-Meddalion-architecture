@@ -1,0 +1,52 @@
+# Platinum publish: Gold -> Platinum (ADP-1026)
+#
+# Platform-owned and separate from the squad's Bronze -> Silver -> Gold job
+# (e2e_medallion_pipeline). Run it after Gold has finished. It reads the tags on the
+# Gold tables, promotes the ones tagged table_type=platinum, and keeps only the columns
+# their sensitivity allows. See notebooks/published/platinum_publish.py.
+#
+# Target catalog/schema come from databricks.yml variables. To move to the dedicated
+# Platinum catalog later: --var platinum_catalog=<new catalog>
+#
+# Plan only (writes nothing):
+#   databricks bundle run e2e_platinum_publish --params dry_run=true -t dev
+
+resources:
+  jobs:
+    e2e_platinum_publish:
+      name: "E2E Platinum Publish"
+      description: "Gold -> Platinum: promote tagged Gold tables, keep only columns their sensitivity allows"
+
+      parameters:
+        - name: entity
+          default: "ALL"
+        - name: dry_run
+          default: "false"
+
+      tasks:
+        - task_key: platinum_publish
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/published/platinum_publish
+            base_parameters:
+              source_catalog: ${var.gold_source_catalog}
+              source_schema: ${var.gold_source_schema}
+              target_catalog: ${var.platinum_catalog}
+              target_schema: ${var.platinum_schema}
+              entity: "{{job.parameters.entity}}"
+              dry_run: "{{job.parameters.dry_run}}"
+              job_id: "{{job.id}}"
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
+              task_key: "{{task.name}}"
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      queue:
+        enabled: true
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            environment_version: "4"
+
+      performance_target: PERFORMANCE_OPTIMIZED

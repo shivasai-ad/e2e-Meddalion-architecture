@@ -33,6 +33,20 @@ variables:
   published_bucket:
     description: S3 bucket backing Gold external tables.
     default: ad-dna-eu-central-1-dev-datalake-published-156041432080
+  gold_source_catalog:
+    description: Catalog the Platinum publish job reads Gold tables from (ADP-1026).
+    default: rls_testing
+  gold_source_schema:
+    description: Gold schema the Platinum publish job reads from (ADP-1026).
+    default: ad_published
+  platinum_catalog:
+    description: >-
+      Catalog the Platinum publish job writes to. Temporary: rls_testing until the
+      dedicated Platinum catalog exists, then override with --var.
+    default: rls_testing
+  platinum_schema:
+    description: Schema the Platinum publish job writes to (ADP-1026).
+    default: ad_platinum
 
 include:
   - resources/jobs/*.yml
