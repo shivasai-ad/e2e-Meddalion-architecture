@@ -1,0 +1,479 @@
+<title>Data Quality Framework</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one reading column; the pipeline diagram and status table carry the structure. */
+:root {
+  --bg: #F4F7F9;
+  --surface: #FFFFFF;
+  --ink: #14212B;
+  --muted: #53656F;
+  --line: #D6DFE5;
+  --accent: #0B6E8A;
+  --accent-soft: #E0EFF4;
+  --pass: #1C7447;
+  --pass-soft: #E1F2E9;
+  --fail: #A83B2A;
+  --fail-soft: #F8E6E2;
+  --plan: #7A5300;
+  --plan-soft: #F6EBD0;
+  --code: #EBF0F3;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E161C; --surface: #15212A; --ink: #E5ECF1; --muted: #9AABB7; --line: #263541;
+    --accent: #5CC0DE; --accent-soft: #16313B; --pass: #5CC48F; --pass-soft: #153325;
+    --fail: #F08B79; --fail-soft: #3A1E19; --plan: #E2B65C; --plan-soft: #35290F; --code: #0B1217;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E161C; --surface: #15212A; --ink: #E5ECF1; --muted: #9AABB7; --line: #263541;
+  --accent: #5CC0DE; --accent-soft: #16313B; --pass: #5CC48F; --pass-soft: #153325;
+  --fail: #F08B79; --fail-soft: #3A1E19; --plan: #E2B65C; --plan-soft: #35290F; --code: #0B1217;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 17px; line-height: 1.6;
+}
+.wrap {
+  max-width: 920px; margin: 0 auto;
+  padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 48px;
+}
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -0.02em; }
+h2 { font-size: 1.55rem; letter-spacing: -0.01em; }
+h3 { font-size: 1.1rem; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--accent); }
+code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code); padding: 0.1em 0.35em; border-radius: 4px; }
+
+header { display: flex; flex-direction: column; gap: 16px; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.lede { font-size: 1.15rem; color: var(--muted); }
+
+section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+ul.plain { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; max-width: 68ch; }
+
+/* Pipeline diagram */
+.flow { display: grid; grid-template-columns: repeat(7, auto); gap: 8px; align-items: stretch; justify-content: start; overflow-x: auto; padding-bottom: 4px; }
+.node { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-family: var(--font-display); font-weight: 600; display: flex; flex-direction: column; justify-content: center; min-width: 96px; text-align: center; }
+.node small { font-family: var(--font-body); font-weight: 400; color: var(--muted); font-size: 0.78rem; }
+.gate { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.arrow { align-self: center; color: var(--muted); font-family: var(--font-mono); }
+.fanout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card h3 { font-size: 1rem; }
+.card p { font-size: 0.95rem; color: var(--muted); }
+
+pre { margin: 0; background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.55; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 0.97rem; }
+th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+th { font-family: var(--font-mono); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 500; background: var(--code); }
+tr:last-child td { border-bottom: 0; }
+
+.pill { display: inline-block; font-family: var(--font-mono); font-size: 0.74rem; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.pass { background: var(--pass-soft); color: var(--pass); }
+.pill.fail { background: var(--fail-soft); color: var(--fail); }
+.pill.plan { background: var(--plan-soft); color: var(--plan); }
+
+ol.steps { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 6px; max-width: 68ch; }
+.note { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; max-width: 68ch; }
+
+@media (max-width: 640px) {
+  .flow { grid-template-columns: 1fr; }
+  .arrow { transform: rotate(90deg); justify-self: center; }
+  .fanout { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Medallion platform</span>
+    <h1>Data Quality Framework</h1>
+    <p class="lede">How the platform checks data as it moves from Bronze to Silver and from Silver to Gold, what happens to rows that fail, and how failed rows get fixed. Built on <a href="https://databrickslabs.github.io/dqx/docs/guide/">Databricks Labs DQX</a>.</p>
+  </header>
+
+  <section>
+    <h2>What it does</h2>
+    <ul class="plain">
+      <li>Every Silver and Gold table has a set of rules, written in a YAML file.</li>
+      <li>The rules are applied to the data that is about to be written to the target table, before it is written.</li>
+      <li>Each rule is pass or fail. A row that passes every rule continues to the next layer.</li>
+      <li>A row that fails any rule is moved to a quarantine table, with the reason it failed. The load does not stop, and good rows keep flowing.</li>
+      <li>Rules are configuration. Adding or changing one needs no code change.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Where the checks run</h2>
+    <div class="flow" role="img" aria-label="Pipeline: Source, Staging, Bronze, quality gate, Silver, quality gate, Gold">
+      <div class="node">Source</div><span class="arrow">→</span>
+      <div class="node">Staging</div><span class="arrow">→</span>
+      <div class="node">Bronze<small>full history</small></div><span class="arrow">→</span>
+      <div class="node gate">Gate<small>bronze_to_silver.yml</small></div>
+    </div>
+    <div class="flow" role="img" aria-label="Silver, quality gate, Gold">
+      <div class="node">Silver</div><span class="arrow">→</span>
+      <div class="node gate">Gate<small>silver_to_gold.yml</small></div><span class="arrow">→</span>
+      <div class="node">Gold</div>
+    </div>
+    <div class="fanout">
+      <div class="card"><h3>Silver gate</h3><p>Applies the Bronze to Silver rules to the data about to be written to Silver, before it is written. Rows that fail go to the <code>formatted_exception</code> schema. Rows that pass are written to Silver.</p></div>
+      <div class="card"><h3>Gold gate</h3><p>Applies the Silver to Gold rules to the data about to be written to Gold, before it is written. Rows that fail go to the <code>published_exception</code> schema. Rows that pass are written to Gold.</p></div>
+    </div>
+    <p>In both layers the rules are checked against what the target table is going to receive, so a rule can be written for any column that will be stored there.</p>
+    <p>Bronze keeps the full history of each record and audits schema changes. It does not apply business rules.</p>
+  </section>
+
+  <section>
+    <h2>How rules are defined</h2>
+    <p>One rules file per layer, one section per table.</p>
+<pre>tables:
+  orders:
+    checks:
+      - name: orders_order_id_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: order_id
+      - name: status_allowed_values
+        check:
+          function: is_in_list
+          arguments:
+            column: status
+            allowed: ["'pending'", "'completed'", "'refunded'"]
+      - name: amount_positive
+        check:
+          function: sql_expression
+          arguments:
+            expression: amount IS NOT NULL AND amount &gt; 0
+            msg: amount must be present and greater than 0
+            columns: ["amount"]</pre>
+    <ul class="plain">
+      <li>A table with no entry in the file is not checked. The run logs that the gate was skipped.</li>
+      <li>Every check is forced to pass or fail. A rule that tries to set another severity is rejected when the file loads, so a failing row cannot slip through by mistake.</li>
+      <li>Rule files live in Git, so every change is reviewed and versioned.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What happens to each row</h2>
+    <div class="tablewrap"><table>
+      <tr><th>Row</th><th>Result</th></tr>
+      <tr><td>Passes every rule</td><td><span class="pill pass">continues</span> to the target table</td></tr>
+      <tr><td>Fails any rule</td><td><span class="pill fail">quarantined</span> and not written to the target</td></tr>
+      <tr><td>A delete (record removed upstream)</td><td>Not checked. It only removes a key</td></tr>
+    </table></div>
+    <p>The gate runs in both load types. A first-time load checks all current rows of the source before inserting them. An incremental load checks only the rows that changed since the last run, then merges them as inserts, updates or deletes.</p>
+  </section>
+
+  <section>
+    <h2>The quarantine tables</h2>
+    <p>Each entity has its own table, named <code>&lt;entity&gt;_quarantine</code>. A quarantined row keeps its original values and adds:</p>
+    <div class="tablewrap"><table>
+      <tr><th>Column</th><th>Holds</th></tr>
+      <tr><td><code>_errors</code></td><td>One entry per failed rule: rule name, message, column(s), check function, run id and time</td></tr>
+      <tr><td><code>_dq_label</code></td><td>Which load produced the row, for example "incremental (Bronze CDF)"</td></tr>
+      <tr><td><code>_dq_run_ts</code></td><td>When the row was quarantined</td></tr>
+    </table></div>
+    <p>To see which rules fail most, expand <code>_errors</code> and group by rule name.</p>
+  </section>
+
+  <section>
+    <h2>The check library</h2>
+    <p>DQX provides built-in checks, and any other condition can be written as a SQL expression.</p>
+    <ul class="plain">
+      <li>Null and empty values</li>
+      <li>Allowed values (lists)</li>
+      <li>Numeric ranges and limits</li>
+      <li>Dates and timestamps: not in the future, valid format, freshness</li>
+      <li>Text format: regular expressions, email, UUID</li>
+      <li>Custom SQL conditions</li>
+    </ul>
+    <p>Checks that compare rows with each other or with another table need the whole table, so they are handled outside the row-level gate.</p>
+  </section>
+
+  <section>
+    <h2>Derived and calculated columns</h2>
+    <p>The gate checks the columns on the DataFrame it receives. To protect a calculated column, the calculation is added to the DataFrame before the gate, in both the first-time and the incremental path. The rules file can then name the new column like any other.</p>
+    <ul class="plain">
+      <li>Rules on the source columns, such as <code>amount</code>, already protect a column calculated from them.</li>
+      <li>Rules on the calculated column itself, such as "not null" or "equals 18% of amount", also catch calculation faults.</li>
+      <li>A rule that names a column that is not on the DataFrame is skipped by DQX, so rule names and column names must match.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Fixing quarantined records</h2>
+    <div class="tablewrap"><table>
+      <tr><th>Situation</th><th>What to do</th></tr>
+      <tr><td>The source data is wrong</td><td>Correct it in the source system or re-load it into Staging. The correction moves through Bronze, Silver and Gold automatically</td></tr>
+      <tr><td>A rule was too strict</td><td>Fix the rule in YAML. The source did not change, so the quarantined rows need a replay</td></tr>
+      <tr><td>The data is permanently invalid</td><td>Mark it rejected and archive it</td></tr>
+      <tr><td>The same bad record keeps arriving</td><td>Track it by key, so the quarantine table does not fill with duplicates</td></tr>
+    </table></div>
+    <h3>How a corrected record flows</h3>
+    <ol class="steps">
+      <li>The corrected record is loaded into Staging.</li>
+      <li>Bronze compares it with the current record. If a business column changed, Bronze closes the old version and adds the new one.</li>
+      <li>The next Silver run reads that change, applies the gate again, and merges it if it passes.</li>
+      <li>Gold follows from Silver in the same way.</li>
+    </ol>
+    <div class="note">
+      <ul class="plain">
+        <li>A quarantined change is not retried automatically. Silver keeps the previous version of that record, or has no row if the key is new, until a corrected version arrives.</li>
+        <li>A correction that leaves the business columns unchanged counts as "no change" and does not flow.</li>
+        <li>Fix data through Staging or the source. Editing Silver or Bronze directly bypasses the gate and the history.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Using the framework in your pipeline</h2>
+    <p>These snippets show the pattern the pipeline uses. A team with its own Bronze, Silver and Gold notebooks can copy the module and add the same calls before each write. The framework needs a Spark DataFrame, a list of checks and a table name for failures. It does not depend on how the DataFrame was built.</p>
+
+    <h3>Install and pin DQX</h3>
+    <p>Add DQX to the job environment, pinned to one version, and review release notes before upgrading.</p>
+<pre>databricks-labs-dqx==0.16.0</pre>
+
+    <h3>The DQ module</h3>
+    <p>The module is one file, <code>common/dq.py</code>. Copy it into your shared code as it is. It has four functions. The notebooks call only the last three.</p>
+    <div class="tablewrap"><table>
+      <tr><th>Function</th><th>What it does</th><th>Inputs</th><th>Returns</th></tr>
+      <tr><td><code>get_engine()</code></td><td>Creates the DQX engine once. The gate calls it, so you do not</td><td>none</td><td>the DQX engine</td></tr>
+      <tr><td><code>load_table_rules(rules_file, entity)</code></td><td>Reads one table's checks from the layer's rules file</td><td><code>rules_file</code>: path to the YAML. <code>entity</code>: table name</td><td>a list of checks, or <code>None</code> if the table has no entry</td></tr>
+      <tr><td><code>scope_checks(checks, scope_filter)</code></td><td>Limits the checks to rows that match a SQL condition. Other rows pass</td><td><code>checks</code>: the list from <code>load_table_rules</code>. <code>scope_filter</code>: a SQL condition as text</td><td>a new list of checks</td></tr>
+      <tr><td><code>quality_gate(spark, entity, df, checks, quarantine_fqn, label)</code></td><td>Runs the checks, quarantines the failing rows, returns the rest</td><td>see the next table</td><td>a DataFrame of the rows that passed</td></tr>
+    </table></div>
+    <p>The inputs of <code>quality_gate</code>, in detail:</p>
+    <div class="tablewrap"><table>
+      <tr><th>Input</th><th>Type</th><th>What it is and where it comes from</th></tr>
+      <tr><td><code>spark</code></td><td>SparkSession</td><td>The Spark session. In a Databricks notebook it is the built-in <code>spark</code>. Pass it through</td></tr>
+      <tr><td><code>entity</code></td><td>text</td><td>The table name, for example <code>orders</code>. It is a key from the layer's configuration: Silver reads the keys under <code>tables:</code> in <code>config/silver_config.yml</code>, and Gold reads the keys of <code>config/gold_compliance_metadata.yml</code>. A notebook widget named <code>entity</code> picks one table or <code>ALL</code>, and the notebook loops <code>for entity in ENTITIES</code>. The same name must be a key under <code>tables:</code> in the DQ rules file, or the gate is skipped</td></tr>
+      <tr><td><code>df</code></td><td>DataFrame</td><td>The data about to be written to the target. What it holds depends on the load, see the next table. It must contain every column that the rules name</td></tr>
+      <tr><td><code>checks</code></td><td>list of dicts</td><td>The rules for this table. Get them with <code>dq.load_table_rules(rules_file, entity)</code>. Each item is one DQX check: a <code>name</code> and a <code>check</code> with a <code>function</code> and its <code>arguments</code>. To check only some rows, wrap the list in <code>dq.scope_checks(checks, "&lt;SQL condition&gt;")</code></td></tr>
+      <tr><td><code>quarantine_fqn</code></td><td>text</td><td>The full name of the table that receives failing rows, as <code>catalog.schema.table</code>. Build it from three values: <code>catalog</code> from <code>get_catalog()</code>, which reads the <code>catalog</code> variable in <code>databricks.yml</code>; the schema from <code>get_schemas()</code>, using the key <code>formatted_exception</code> for Silver or <code>published_exception</code> for Gold; and the table name <code>&lt;entity&gt;_quarantine</code>. Both functions are in <code>common/config_loader.py</code></td></tr>
+      <tr><td><code>label</code></td><td>text</td><td>A short description of the load, for example <code>bootstrap (Bronze)</code>. It is printed in the log and saved on every quarantined row in <code>_dq_label</code></td></tr>
+    </table></div>
+    <p>What <code>df</code> holds in each load:</p>
+    <div class="tablewrap"><table>
+      <tr><th>Load</th><th><code>df</code> is</th><th>Built from</th></tr>
+      <tr><td>Silver, first-time</td><td>All current Bronze rows, as they were at one pinned Bronze version</td><td>The Bronze table, filtered to current rows, then selected into Silver's columns plus the audit columns</td></tr>
+      <tr><td>Silver, incremental</td><td>The rows to merge into Silver: the changed rows, one per key, selected into Silver's columns plus the audit columns</td><td>Bronze's change data feed, read from Silver's watermark to Bronze's latest version</td></tr>
+      <tr><td>Gold, first-time</td><td>The finished Gold DataFrame, after any joins and aggregations, with every column that will be stored</td><td>Built from the Silver table or tables</td></tr>
+      <tr><td>Gold, incremental</td><td>The Gold rows recomputed for the groups that changed in Silver</td><td>The Silver tables, limited to the changed groups, then joined and aggregated again</td></tr>
+    </table></div>
+    <p><code>rules_file</code> is the YAML for the layer. Build it from your project root: <code>config/dq_rules/bronze_to_silver.yml</code> for Silver and <code>config/dq_rules/silver_to_gold.yml</code> for Gold.</p>
+    <p>Before the first run, the exception schemas must exist. In our project <code>00_setup_test_environment.py</code> creates every schema in the schema list, including <code>formatted_exception</code> and <code>published_exception</code>. The quarantine table itself is created by the gate's write the first time a row fails.</p>
+    <p>The gate returns a DataFrame of the rows that passed, with the same columns as <code>df</code>. Write that DataFrame to the target, not the one you passed in.</p>
+
+    <h3>Silver: first-time load of a new table</h3>
+    <p>Build the DataFrame that will be written, call the gate, then write what comes back.</p>
+<pre>SILVER_DQ_RULES = os.path.join(PROJECT_ROOT, "config/dq_rules/bronze_to_silver.yml")
+
+# new_rows is the DataFrame that will be inserted into Silver
+# (business columns, renamed audit columns, framework audit columns)
+silver_rules = dq.load_table_rules(SILVER_DQ_RULES, entity)
+if silver_rules:
+    new_rows = dq.quality_gate(
+        spark, entity, new_rows, silver_rules,
+        quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
+        label="bootstrap (Bronze)",
+    )
+else:
+    print(f"No DQ rules for '{entity}', skipping DQ gate")
+
+new_rows.write.format("delta").mode("append").saveAsTable(silver_fqn)</pre>
+
+    <h3>Silver: incremental load</h3>
+    <p>The input is the set of changed rows read from Bronze's change data feed, reduced to one row per key. Build the DataFrame that will be merged, then run the gate on it. Deleted rows are not checked, because they only remove a key.</p>
+<pre>changes = cdf.latest_per_key(changes, primary_keys)
+
+# 1. Build the DataFrame that will be merged into Silver: business columns,
+#    renamed audit columns, framework audit columns (and any calculated columns)
+source = changes.select(*select_exprs)
+for fw_col in framework_audit:
+    source = source.withColumn(fw_col, F.lit(atomic_ts).cast(audit_col_types[fw_col]))
+
+# 2. Run the gate on that DataFrame. Deleted rows are not checked
+silver_rules = dq.load_table_rules(SILVER_DQ_RULES, entity)
+if silver_rules:
+    source = dq.quality_gate(
+        spark, entity, source,
+        dq.scope_checks(silver_rules, "_bronze_is_current = TRUE"),
+        quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
+        label="incremental (Bronze CDF)",
+    )
+
+# 3. Merge only the rows that passed
+source.createOrReplaceTempView("_silver_changes")
+
+spark.sql(f"""
+    MERGE INTO {silver_fqn} AS t
+    USING _silver_changes AS s
+    ON {on}
+    WHEN MATCHED AND s._bronze_is_current = FALSE THEN DELETE
+    WHEN MATCHED AND s._bronze_is_current = TRUE THEN UPDATE SET {update_set}
+    WHEN NOT MATCHED AND s._bronze_is_current = TRUE
+        THEN INSERT ({insert_cols}) VALUES ({insert_vals})
+""")</pre>
+
+    <h3>Gold: first-time load of a new table</h3>
+    <p>A Gold table is often built from several Silver tables, joined and aggregated. The gate runs on the finished Gold DataFrame, after the join and the aggregation, so the rules can name any column that will be stored, including the aggregated ones. Only the rows that pass are written. The table and column names below are an example.</p>
+<pre>GOLD_DQ_RULES = os.path.join(PROJECT_ROOT, "config/dq_rules/silver_to_gold.yml")
+entity = "customer_sales"
+
+# 1. Read the Silver tables
+orders = spark.table(silver_orders_fqn)
+customers = spark.table(silver_customers_fqn)
+products = spark.table(silver_products_fqn)
+
+# 2. Join and aggregate. This is the DataFrame that will be written to Gold
+gold_df = (
+    orders.join(customers, "customer_id")
+    .join(products, "product_id")
+    .groupBy("customer_id", "region")
+    .agg(
+        F.count("order_id").alias("order_count"),
+        F.sum(F.col("quantity") * F.col("unit_price")).alias("total_amount"),
+    )
+    .withColumn("_gold_refreshed_at", F.current_timestamp())
+)
+
+# 3. Run the gate on the finished Gold DataFrame
+dq_rules = dq.load_table_rules(GOLD_DQ_RULES, entity)
+if dq_rules:
+    gold_df = dq.quality_gate(
+        spark, entity, gold_df, dq_rules,
+        quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
+        label="bootstrap (Silver join + aggregate)",
+    )
+
+# 4. Write only the rows that passed
+gold_df.write.mode("append").saveAsTable(gold_fqn)</pre>
+    <p>The rules for this table are written against the Gold columns:</p>
+<pre>tables:
+  customer_sales:
+    checks:
+      - name: customer_sales_customer_id_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: customer_id
+      - name: customer_sales_order_count_positive
+        check:
+          function: sql_expression
+          arguments:
+            expression: order_count &gt; 0
+            msg: order_count must be greater than 0
+            columns: ["order_count"]
+      - name: customer_sales_total_amount_not_negative
+        check:
+          function: sql_expression
+          arguments:
+            expression: total_amount IS NOT NULL AND total_amount &gt;= 0
+            msg: total_amount must be present and not negative
+            columns: ["total_amount"]</pre>
+
+    <h3>Gold: incremental load</h3>
+    <p>Recompute the aggregate only for the groups that changed in Silver, run the gate on that result, then merge the rows that passed.</p>
+<pre># 1. Find the groups affected by changes in any of the Silver tables.
+#    changed_keys is a DataFrame with the group key (here, customer_id).
+changed_keys = ...   # your own logic, for example from each Silver table's change data feed
+
+# 2. Recompute the aggregate for those groups only
+gold_df = (
+    orders.join(changed_keys, "customer_id")
+    .join(customers, "customer_id")
+    .join(products, "product_id")
+    .groupBy("customer_id", "region")
+    .agg(
+        F.count("order_id").alias("order_count"),
+        F.sum(F.col("quantity") * F.col("unit_price")).alias("total_amount"),
+    )
+    .withColumn("_gold_refreshed_at", F.current_timestamp())
+)
+
+# 3. Run the gate on the recomputed Gold rows
+dq_rules = dq.load_table_rules(GOLD_DQ_RULES, entity)
+if dq_rules:
+    gold_df = dq.quality_gate(
+        spark, entity, gold_df, dq_rules,
+        quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
+        label="incremental (Silver join + aggregate)",
+    )
+
+# 4. Merge only the rows that passed, on the group key
+gold_df.createOrReplaceTempView("_gold_merge_source")
+spark.sql(f"""
+    MERGE INTO {gold_fqn} AS t
+    USING _gold_merge_source AS s
+    ON t.customer_id &lt;=&gt; s.customer_id AND t.region &lt;=&gt; s.region
+    WHEN MATCHED THEN UPDATE SET *
+    WHEN NOT MATCHED THEN INSERT *
+""")</pre>
+    <p>What to know about aggregated Gold tables:</p>
+    <ul class="plain">
+      <li>A quarantined row is a Gold row, one per group, not a Silver row. Keep the group key in the output so a failed row can be traced back to its Silver data.</li>
+      <li>If a group fails, Gold keeps the previous value for that group, or has no row for it, until the problem is fixed.</li>
+      <li>To fix it, correct the Silver data through Staging or the source. The next run recomputes the group from Silver and the gate checks it again.</li>
+      <li>A group whose input rows were all deleted needs its own handling, because the gate only sees rows that exist.</li>
+    </ul>
+
+    <h3>Adding a new table</h3>
+    <ol class="steps">
+      <li>Add the table to the layer's rules file, under <code>tables:</code>, using exactly the same name as the entity in your configuration.</li>
+      <li>Write each rule against a column that exists on the DataFrame at the gate. A rule that names a missing column is skipped by DQX.</li>
+      <li>Run the load. The notebook code does not change: it loops over entities and calls the gate for each.</li>
+      <li>Failing rows appear in <code>&lt;entity&gt;_quarantine</code> in the exception schema. The table is created on the first failure. The exception schema must already exist.</li>
+    </ol>
+
+    <h3>Adapting it to your platform</h3>
+    <ul class="plain">
+      <li>Change the rules file paths, the exception schema names and the label text.</li>
+      <li>Keep one call to <code>quality_gate</code> before each write to a layer. Place it after the DataFrame is complete, so every column that will be stored can have a rule.</li>
+      <li>Use <code>scope_checks</code> for any rows that should not be checked, such as deletes.</li>
+      <li>Always continue with the DataFrame the gate returns.</li>
+      <li>The engine needs a Databricks <code>WorkspaceClient</code>, so the code must run with workspace credentials, as it does in a job.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Governance and monitoring</h2>
+    <ul class="plain">
+      <li>Rules are reviewed and versioned in Git.</li>
+      <li>Each quarantined row traces to the rule that rejected it and the load that produced it.</li>
+      <li>DQX adds run-level summary metrics (input, valid and error row counts), alerts to Slack, Teams or a webhook, and a dashboard. See the status table.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Status</h2>
+    <div class="tablewrap"><table>
+      <tr><th>Capability</th><th>Status</th></tr>
+      <tr><td>Rule gate at Bronze to Silver, first-time and incremental</td><td><span class="pill pass">in the pipeline</span></td></tr>
+      <tr><td>Rule gate at Silver to Gold, first-time and incremental</td><td><span class="pill pass">in the pipeline</span></td></tr>
+      <tr><td>Rules defined per layer and per table in YAML</td><td><span class="pill pass">in the pipeline</span></td></tr>
+      <tr><td>Quarantine tables with failure reasons</td><td><span class="pill pass">in the pipeline</span></td></tr>
+      <tr><td>Calculated-column checks before the gate</td><td><span class="pill plan">designed</span></td></tr>
+      <tr><td>Replay of quarantined rows after a rule or data fix</td><td><span class="pill plan">planned</span></td></tr>
+      <tr><td>Status on quarantined rows: open, resolved, rejected</td><td><span class="pill plan">planned</span></td></tr>
+      <tr><td>Run metrics, alerts and a failure threshold</td><td><span class="pill plan">planned</span></td></tr>
+      <tr><td>Automatic check that rule column names match the tables</td><td><span class="pill plan">planned</span></td></tr>
+    </table></div>
+  </section>
+</div>

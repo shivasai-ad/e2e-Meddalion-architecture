@@ -43,7 +43,7 @@ from common.config_loader import (
     load_bronze_config,
     HARNESS_NAMESPACE,
 )
-from common import control, audit_log, schema_audit, gold_freshness
+from common import control, audit_log, schema_audit, gold_freshness, dq_gate_log
 
 # COMMAND ----------
 
@@ -87,7 +87,7 @@ print(f"Schemas: {list(SCHEMAS.values())}")
 
 if RESET:
     AUDIT_SCHEMA = SCHEMAS["audit"]
-    audit_tables = ["job_flags", "audit_log", "schema_audit_log", "gold_refresh_log"]
+    audit_tables = ["job_flags", "audit_log", "schema_audit_log", "gold_refresh_log", "dq_gate_log"]
     for table_name in audit_tables:
         fqn = f"{CATALOG}.{AUDIT_SCHEMA}.{table_name}"
         if spark.catalog.tableExists(fqn):
@@ -126,9 +126,15 @@ if RESET:
     entity_layers = ["stg", "bronze", "silver", "gold"]
     entities = list(load_bronze_config(os.path.join(PROJECT_ROOT, "config/bronze_config.yml")).get("tables", {}).keys())
 
+    # Derived Gold tables (joins / aggregations, config/gold_derived_tables.yml) exist only in
+    # the gold layer, so they are not in bronze_config.yml. Reset them too.
+    import yaml
+    with open(os.path.join(PROJECT_ROOT, "config/gold_derived_tables.yml"), encoding="utf-8") as _f:
+        derived_entities = list((yaml.safe_load(_f) or {}).get("tables", {}).keys())
+
     dropped = []
     for layer in entity_layers:
-        for entity in entities:
+        for entity in entities + (derived_entities if layer == "gold" else []):
             fqn = get_fqn(entity, layer)
             if spark.catalog.tableExists(fqn):
                 if USE_EXTERNAL:
@@ -145,6 +151,14 @@ if RESET:
                     dbutils.fs.rm(location, recurse=True)
                 except Exception:
                     pass  # nothing there yet -- fine
+
+    # DQ quarantine tables (rows that failed a check) in the two exception schemas
+    for exception_schema in (SCHEMAS["formatted_exception"], SCHEMAS["published_exception"]):
+        if spark.catalog.databaseExists(f"{CATALOG}.{exception_schema}"):
+            for row in spark.sql(f"SHOW TABLES IN {CATALOG}.{exception_schema}").collect():
+                fqn = f"{CATALOG}.{exception_schema}.{row.tableName}"
+                spark.sql(f"DROP TABLE {fqn}")
+                dropped.append(fqn)
 
     if dropped:
         print(f"\nDropped {len(dropped)} entity table(s):")
@@ -184,12 +198,14 @@ control.ensure_control_table(spark, CATALOG, AUDIT_SCHEMA, USE_EXTERNAL, AUDIT_B
 audit_log.AuditLogger(spark, CATALOG, AUDIT_SCHEMA, USE_EXTERNAL, AUDIT_BUCKET).ensure_table()
 schema_audit.ensure_table(spark, CATALOG, AUDIT_SCHEMA, USE_EXTERNAL, AUDIT_BUCKET)
 gold_freshness.ensure_table(spark, CATALOG, AUDIT_SCHEMA, USE_EXTERNAL, AUDIT_BUCKET)
+dq_gate_log.DqGateLogger(spark, CATALOG, AUDIT_SCHEMA, "setup", None, USE_EXTERNAL, AUDIT_BUCKET).ensure_table()
 
 print(f"✓ Audit tables ready in {CATALOG}.{AUDIT_SCHEMA}:")
 print(f"  - job_flags")
 print(f"  - audit_log")
 print(f"  - schema_audit_log")
 print(f"  - gold_refresh_log")
+print(f"  - dq_gate_log")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CREATE GOLD SCHEMA STORED PROCEDURES (idempotent)

@@ -57,13 +57,16 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, cdf, audit_log, control, schema_audit, dq
+from common import ddl, cdf, audit_log, control, schema_audit, dq, dq_gate_log, job_context
 
 # COMMAND ----------
 
 # Widget for entity selection
 dbutils.widgets.text("entity", "ALL", label="Entity (or ALL)")
 ENTITY = dbutils.widgets.get("entity").strip()
+for _name in ("job_id", "job_run_id", "task_run_id", "task_key"):
+    dbutils.widgets.text(_name, "")  # set by the job (base_parameters), for the audit logs
+job_context.set_from_widgets(dbutils)
 
 # Constants
 CATALOG = get_catalog()
@@ -297,6 +300,7 @@ def _bootstrap_silver_table(
             spark, entity, new_rows, silver_rules,
             quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
             label="bootstrap (Bronze)",
+            gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "silver", f"{catalog}.{schemas['silver']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
         )
     else:
         print(f"ℹ No DQ rules for '{entity}' in bronze_to_silver.yml — skipping DQ gate")
@@ -385,6 +389,7 @@ def _incremental_silver_merge(
             dq.scope_checks(silver_rules, "_bronze_is_current = TRUE"),
             quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
             label="incremental (Bronze CDF)",
+            gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "silver", f"{catalog}.{schemas['silver']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
         )
     else:
         print(f"ℹ No DQ rules for '{entity}' in bronze_to_silver.yml — skipping DQ gate")
