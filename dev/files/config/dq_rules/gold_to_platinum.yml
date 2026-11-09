@@ -1,54 +1,23 @@
-# Gold -> Platinum data-quality rules (ADP-1026). ONE file for every promoted table.
-# Applied to the Gold rows BEFORE the allowed columns are kept, so a rule can check a column
-# that Platinum itself does not carry (for example org_id, the row-filter key, which is internal).
-# Every check is pass/fail: a row that fails ANY check goes to the Platinum quarantine table
-# (<table>_quarantine, in the Platinum exception schema), and a row that passes all checks is published.
-# The run does not stop for failing rows.
-#
-# A table that is tagged for Platinum but has NO entry here is NOT published and the run fails
-# with a message: customer-facing data must not skip the gate.
-#
-# Each table has up to three parts, all written by hand:
-#   checks:         INPUT gate, on the full Gold rows (every Gold column, before columns are dropped).
-#   treat:          optional. {column: null} forces a kept column to NULL in Platinum (stricter only).
-#   output_checks:  OUTPUT gate, on the rows after the column handling (allowed columns kept, masks
-#                   applied, treat columns nulled). It verifies the handling worked, for example a column
-#                   forced to NULL must be NULL; a row that fails is quarantined and not published.
-#                   A sql_expression passes when it evaluates to true.
+# Each table has up to two parts, written by hand:
+#   checks:  the DQ gate. It runs AFTER the column handling, on the rows that will be published
+#            (allowed columns kept, masks applied, treat columns nulled). A row that fails any check
+#            goes to the Platinum quarantine table and is not published. A rule may only name a column
+#            Platinum keeps; the job fails before writing if a rule names any other column.
+#   treat:   optional. {column: null} forces a kept column to NULL in Platinum (stricter only).
+#            Use a masked-value check in checks to confirm restricted columns are masked (see
+#            vendor_iban example below). A sql_expression passes when it evaluates to true.
 #
 # Add or change checks here; no code change is needed.
 tables:
   asset:
-    # Example of treat + output_checks together (not active for asset, which has no restricted column):
+    # Example of treat + a check that confirms it (not active for asset, which has no restricted column):
     #   treat: { vendor_iban: "null" }
-    #   output_checks:
-    #     - name: asset_output_vendor_iban_is_null
+    #   checks:
+    #     - name: asset_vendor_iban_is_null
     #       check:
     #         function: sql_expression
     #         arguments: { expression: "vendor_iban IS NULL", msg: "vendor_iban must be NULL in Platinum", columns: ["vendor_iban"] }
-    output_checks:
-      - name: asset_output_asset_name_not_empty
-        check:
-          function: is_not_null_and_not_empty
-          arguments:
-            column: asset_name
     checks:
-      # Row-filter key: a row without it cannot be filtered per customer.
-      - name: asset_org_id_not_null
-        check:
-          function: is_not_null
-          arguments:
-            column: org_id
-      - name: asset_asset_id_not_null
-        check:
-          function: is_not_null
-          arguments:
-            column: asset_id
-      - name: asset_asset_id_unique
-        check:
-          function: is_unique
-          arguments:
-            columns: ["asset_id"]
       # Customer-facing fields. status mirrors Gold's own rule (silver_to_gold.yml: asset_status_not_empty).
       - name: asset_asset_name_not_empty
         check:

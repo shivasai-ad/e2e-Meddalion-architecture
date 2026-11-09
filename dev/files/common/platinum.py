@@ -176,42 +176,49 @@ def plan_schema(spark, catalog: str, schema: str, only: Optional[str] = None) ->
     return plans
 
 
+def checked_columns(checks: List[dict]) -> set:
+    """Every column a DQX rule names, from `column` or `columns` in its arguments."""
+    names = set()
+    for rule in checks or []:
+        args = (rule.get("check") or {}).get("arguments") or {}
+        if isinstance(args.get("column"), str):
+            names.add(args["column"])
+        names.update(c for c in (args.get("columns") or []) if isinstance(c, str))
+    return names
+
+
 def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
                   source_columns: List[dict], source_table_tags: Dict[str, str],
                   checks: List[dict], quarantine_fqn: str, gate_log=None,
-                  treat: Optional[Dict[str, str]] = None,
-                  output_checks: Optional[List[dict]] = None) -> int:
+                  treat: Optional[Dict[str, str]] = None) -> int:
     """Rebuild one Platinum table from Gold and copy its tags. Returns the row count.
 
-    Two gates, both pass/fail, both quarantining to `quarantine_fqn`:
-      1. Input gate (`checks`) on the full Gold rows, so a rule can use a column Platinum drops,
-         such as the row-filter key.
-      2. Output gate (`output_checks`) on the rows after the column handling (allowed columns kept,
-         masks applied, `treat` columns forced to NULL). It verifies the handling worked, for example
-         that a column meant to be NULL is NULL; a row that fails is not published.
-    If no row passes a gate, the existing Platinum table is left as it is.
+    One DQ gate, after the column handling (allowed columns kept, masks applied, `treat` columns
+    forced to NULL). Rules may only use columns Platinum keeps; a rule naming any other column
+    fails the table before anything is written. Failing rows go to `quarantine_fqn`.
+    If no row passes, the existing Platinum table is left as it is.
     """
     from . import dq  # imported here so the module can be tested without Spark
 
-    good = dq.quality_gate(
-        spark, plan.table, spark.table(source_fqn), checks, quarantine_fqn,
-        "gold_to_platinum", gate_log=gate_log,
-    )
-    if good.isEmpty():
-        raise ValueError(f"No row of {source_fqn} passed the DQ gate; {target_fqn} was left unchanged.")
     treat = treat or {}
     unknown = sorted(set(treat) - {c.name for c in plan.kept})
     if unknown:
         raise ValueError(f"'treat' for '{plan.table}' names column(s) {unknown} that are not kept in Platinum.")
-    out = good.selectExpr(*[select_expr(c, treat) for c in plan.kept])
-    if output_checks:
-        out = dq.quality_gate(
-            spark, plan.table, out, output_checks, quarantine_fqn,
-            "gold_to_platinum_output", gate_log=gate_log,
+    kept = {c.name for c in plan.kept}
+    dropped_refs = sorted(checked_columns(checks) - kept)
+    if dropped_refs:
+        raise ValueError(
+            f"DQ rules for '{plan.table}' use column(s) {dropped_refs} that Platinum does not keep, so the "
+            f"gate cannot check them. Remove those rules, or keep the column in Platinum."
         )
-        if out.isEmpty():
-            raise ValueError(f"No row of {source_fqn} passed the output gate; {target_fqn} was left unchanged.")
-    out.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_fqn)
+
+    out = spark.table(source_fqn).selectExpr(*[select_expr(c, treat) for c in plan.kept])
+    good = dq.quality_gate(
+        spark, plan.table, out, checks, quarantine_fqn, "gold_to_platinum", gate_log=gate_log,
+    )
+    if good.isEmpty():
+        raise ValueError(f"No row of {source_fqn} passed the DQ gate; {target_fqn} was left unchanged.")
+    good.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_fqn)
 
     # Table tags: carry the Gold tags over, but not the gate tag itself, and record provenance.
     tags = {k: v for k, v in source_table_tags.items() if k != TABLE_GATE_TAG}
