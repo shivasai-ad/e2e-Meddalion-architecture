@@ -37,8 +37,8 @@ from common import audit_log, job_context, platinum
 
 dbutils.widgets.text("source_catalog", "rls_testing", label="Gold source catalog")
 dbutils.widgets.text("source_schema", "ad_published", label="Gold source schema")
-dbutils.widgets.text("target_catalog", "rls_testing", label="Platinum catalog")
-dbutils.widgets.text("target_schema", "ad_platinum", label="Platinum schema")
+dbutils.widgets.text("target_catalog", "dev_platinum_catalog", label="Platinum catalog")
+dbutils.widgets.text("target_schema", "ad_rls_testing_platinum", label="Platinum schema")
 dbutils.widgets.text("entity", "ALL", label="Table (or ALL)")
 dbutils.widgets.text("dry_run", "false", label="Dry run (true = plan only)")
 for _name in ("job_id", "job_run_id", "task_run_id", "task_key"):

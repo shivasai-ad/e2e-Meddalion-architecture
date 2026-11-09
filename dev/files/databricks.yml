@@ -41,12 +41,14 @@ variables:
     default: ad_published
   platinum_catalog:
     description: >-
-      Catalog the Platinum publish job writes to. Temporary: rls_testing until the
-      dedicated Platinum catalog exists, then override with --var.
-    default: rls_testing
+      Catalog the Platinum publish job writes to: the platform-owned Platinum catalog
+      (created by adi-databricks-infra-dataplatform). Override with --var if needed.
+    default: dev_platinum_catalog
   platinum_schema:
-    description: Schema the Platinum publish job writes to (ADP-1026).
-    default: ad_platinum
+    description: >-
+      Schema the Platinum publish job writes to (ADP-1026). A manual test schema in
+      dev_platinum_catalog, not managed by Terraform.
+    default: ad_rls_testing_platinum
 
 include:
   - resources/jobs/*.yml
