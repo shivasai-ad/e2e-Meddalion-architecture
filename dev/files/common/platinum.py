@@ -92,7 +92,13 @@ def select_expr(col: ColumnPlan) -> str:
     """One SELECT-list item for a kept column."""
     quoted = f"`{col.name}`"
     if col.treatment == LAST4:
-        return f"concat('****', right(cast({quoted} as string), 4)) AS {quoted}"
+        # A value of 4 characters or fewer would show in full, so it is masked completely.
+        text = f"cast({quoted} as string)"
+        return (
+            f"CASE WHEN {quoted} IS NULL THEN NULL "
+            f"WHEN length({text}) > 4 THEN concat('****', right({text}, 4)) "
+            f"ELSE '****' END AS {quoted}"
+        )
     return quoted
 
 
@@ -152,10 +158,26 @@ def plan_schema(spark, catalog: str, schema: str, only: Optional[str] = None) ->
 
 
 def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
-                  source_columns: List[dict], source_table_tags: Dict[str, str]) -> int:
-    """Rebuild one Platinum table from Gold and copy its tags. Returns the row count."""
-    select_list = ", ".join(select_expr(c) for c in plan.kept)
-    spark.sql(f"CREATE OR REPLACE TABLE {target_fqn} AS SELECT {select_list} FROM {source_fqn}")
+                  source_columns: List[dict], source_table_tags: Dict[str, str],
+                  checks: List[dict], quarantine_fqn: str, gate_log=None) -> int:
+    """Rebuild one Platinum table from Gold and copy its tags. Returns the row count.
+
+    The DQ gate runs on the full Gold rows first (so a rule can use a column Platinum drops,
+    such as the row-filter key). Failing rows go to `quarantine_fqn`; passing rows are published
+    with only the allowed columns. If no row passes, the existing Platinum table is left as it is.
+    """
+    from . import dq  # imported here so the module can be tested without Spark
+
+    good = dq.quality_gate(
+        spark, plan.table, spark.table(source_fqn), checks, quarantine_fqn,
+        "gold_to_platinum", gate_log=gate_log,
+    )
+    if good.isEmpty():
+        raise ValueError(f"No row of {source_fqn} passed the DQ gate; {target_fqn} was left unchanged.")
+    (
+        good.selectExpr(*[select_expr(c) for c in plan.kept])
+        .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_fqn)
+    )
 
     # Table tags: carry the Gold tags over, but not the gate tag itself, and record provenance.
     tags = {k: v for k, v in source_table_tags.items() if k != TABLE_GATE_TAG}

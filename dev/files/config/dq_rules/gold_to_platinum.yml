@@ -1,0 +1,60 @@
+# Gold -> Platinum data-quality rules (ADP-1026). ONE file for every promoted table.
+# Applied to the Gold rows BEFORE the allowed columns are kept, so a rule can check a column
+# that Platinum itself does not carry (for example org_id, the row-filter key, which is internal).
+# Every check is pass/fail: a row that fails ANY check goes to the Platinum quarantine table
+# (<table>_quarantine, in the Platinum exception schema), and a row that passes all checks is published.
+# The run does not stop for failing rows.
+#
+# A table that is tagged for Platinum but has NO entry here is NOT published and the run fails
+# with a message: customer-facing data must not skip the gate.
+#
+# Add or change checks here; no code change is needed.
+tables:
+  asset:
+    checks:
+      # Row-filter key: a row without it cannot be filtered per customer.
+      - name: asset_org_id_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: org_id
+      - name: asset_asset_id_not_null
+        check:
+          function: is_not_null
+          arguments:
+            column: asset_id
+      - name: asset_asset_id_unique
+        check:
+          function: is_unique
+          arguments:
+            columns: ["asset_id"]
+      # Customer-facing fields. status mirrors Gold's own rule (silver_to_gold.yml: asset_status_not_empty).
+      - name: asset_asset_name_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: asset_name
+      - name: asset_asset_type_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: asset_type
+      - name: asset_status_not_empty
+        check:
+          function: is_not_null_and_not_empty
+          arguments:
+            column: status
+      # Format and range.
+      - name: asset_currency_iso_format
+        check:
+          function: regex_match
+          arguments:
+            column: currency
+            regex: "^[A-Z]{3}$"
+      - name: asset_fund_size_not_negative
+        check:
+          function: sql_expression
+          arguments:
+            expression: fund_size IS NULL OR fund_size >= 0
+            msg: fund_size must not be negative
+            columns: ["fund_size"]
