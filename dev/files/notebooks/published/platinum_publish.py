@@ -18,9 +18,9 @@
 # MAGIC **Target is a setting.** The catalog and schema it writes to are widgets, set from
 # MAGIC `databricks.yml`; moving to the dedicated Platinum catalog is a `--var` change, not a code change.
 # MAGIC
-# MAGIC **DQ gate:** the Gold rows go through the rules in `config/dq_rules/gold_to_platinum.yml` first, on
-# MAGIC every Gold column. A row that fails any check goes to `<table>_quarantine` in the Platinum exception
-# MAGIC schema; passing rows are published. A promoted table with no rules is not published.
+# MAGIC **DQ gate:** after the column handling, the rules in `config/dq_rules/gold_to_platinum.yml` run on the
+# MAGIC rows that will be published. A row that fails any check goes to `<table>_quarantine` in the Platinum
+# MAGIC exception schema; passing rows are published. A rule may only use a column Platinum keeps. A promoted table with no rules is not published.
 # MAGIC The audit log, the DQ gate log and the quarantine tables sit in the Platinum catalog
 # MAGIC (`<target_schema>_audit`, `<target_schema>_exception`), owned by the platform team.
 # MAGIC
@@ -92,12 +92,14 @@ display(report_df)
 promoted = [p for p in plans if p.promoted]
 print(f"Plan: {len(promoted)} of {len(plans)} Gold table(s) will be promoted to {TARGET_CATALOG}.{TARGET_SCHEMA}.")
 rules = {p.table: dq.load_table_rules(RULES_FILE, p.table) for p in promoted}
+treats = {p.table: platinum.load_treat(RULES_FILE, p.table) for p in promoted}
 for p in plans:
     left_out = [c.name for c in p.columns if c.treatment == platinum.OMIT]
     dq_note = ""
     if p.promoted:
         n_rules = len(rules[p.table] or [])
-        dq_note = (f" | DQ: {n_rules} check(s)" if n_rules
+        dq_note = (f" | DQ: {n_rules} check(s), "
+                   f"{len(treats[p.table])} column(s) forced to NULL" if n_rules
                    else " | DQ: NO RULES in gold_to_platinum.yml, will not be published")
     print(f"  {p.table}: {'PROMOTE' if p.promoted else 'skip'} - {p.reason}"
           + (f" | {len(p.kept)} column(s) kept, {len(left_out)} left out" if p.promoted else "") + dq_note)
@@ -137,6 +139,7 @@ else:
                     gate_log=dq_gate_log.DqGateLogger(
                         spark, TARGET_CATALOG, AUDIT_SCHEMA, "platinum", target_fqn, False, None
                     ),
+                    treat=treats[p.table],
                 )
                 log_ctx.set_count(n)
             print(f"  published {target_fqn}: {n} row(s), {len(p.kept)} column(s)")
