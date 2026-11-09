@@ -18,9 +18,15 @@
 # MAGIC **Target is a setting.** The catalog and schema it writes to are widgets, set from
 # MAGIC `databricks.yml`; moving to the dedicated Platinum catalog is a `--var` change, not a code change.
 # MAGIC
-# MAGIC Each table is rebuilt in full (`CREATE OR REPLACE TABLE ... AS SELECT`) and its Gold tags are
-# MAGIC copied across, so tag-based masks and policies match Platinum too. A table that fails is
-# MAGIC reported and skipped; the run carries on and fails at the end if any table failed.
+# MAGIC **DQ gate:** the Gold rows go through the rules in `config/dq_rules/gold_to_platinum.yml` first, on
+# MAGIC every Gold column. A row that fails any check goes to `<table>_quarantine` in the Platinum exception
+# MAGIC schema; passing rows are published. A promoted table with no rules is not published.
+# MAGIC The audit log, the DQ gate log and the quarantine tables sit in the Platinum catalog
+# MAGIC (`<target_schema>_audit`, `<target_schema>_exception`), owned by the platform team.
+# MAGIC
+# MAGIC Each table is rebuilt in full and its Gold tags are copied across, so tag-based masks and
+# MAGIC policies match Platinum too. If no row passes, the existing Platinum table is left unchanged.
+# MAGIC A table that fails is reported and skipped; the run carries on and fails at the end if any table failed.
 
 # COMMAND ----------
 
@@ -30,8 +36,7 @@ import sys
 PROJECT_ROOT = os.path.abspath("../..")
 sys.path.append(PROJECT_ROOT)
 
-from common.config_loader import get_schemas, get_use_external_tables, get_s3_bucket
-from common import audit_log, job_context, platinum
+from common import audit_log, dq, dq_gate_log, job_context, platinum
 
 # COMMAND ----------
 
@@ -52,8 +57,11 @@ TARGET_SCHEMA = dbutils.widgets.get("target_schema").strip()
 ENTITY = dbutils.widgets.get("entity").strip()
 DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
 
-USE_EXTERNAL = get_use_external_tables()
-AUDIT_BUCKET = get_s3_bucket("audit") if USE_EXTERNAL else None
+# The audit log, the DQ gate log and the quarantine tables live in the Platinum catalog, next to the
+# published schema, so the platform team owns them. The Datahub principal gets no access to them.
+AUDIT_SCHEMA = f"{TARGET_SCHEMA}_audit"
+EXCEPTION_SCHEMA = f"{TARGET_SCHEMA}_exception"
+RULES_FILE = os.path.join(PROJECT_ROOT, "config/dq_rules/gold_to_platinum.yml")
 
 # COMMAND ----------
 
@@ -83,10 +91,16 @@ display(report_df)
 
 promoted = [p for p in plans if p.promoted]
 print(f"Plan: {len(promoted)} of {len(plans)} Gold table(s) will be promoted to {TARGET_CATALOG}.{TARGET_SCHEMA}.")
+rules = {p.table: dq.load_table_rules(RULES_FILE, p.table) for p in promoted}
 for p in plans:
     left_out = [c.name for c in p.columns if c.treatment == platinum.OMIT]
+    dq_note = ""
+    if p.promoted:
+        n_rules = len(rules[p.table] or [])
+        dq_note = (f" | DQ: {n_rules} check(s)" if n_rules
+                   else " | DQ: NO RULES in gold_to_platinum.yml, will not be published")
     print(f"  {p.table}: {'PROMOTE' if p.promoted else 'skip'} - {p.reason}"
-          + (f" | {len(p.kept)} column(s) kept, {len(left_out)} left out" if p.promoted else ""))
+          + (f" | {len(p.kept)} column(s) kept, {len(left_out)} left out" if p.promoted else "") + dq_note)
 
 # COMMAND ----------
 
@@ -99,21 +113,30 @@ failures = []
 if DRY_RUN:
     print("dry_run = true: nothing written.")
 else:
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {TARGET_CATALOG}.{TARGET_SCHEMA}")
-    audit_logger = audit_log.AuditLogger(
-        spark, SOURCE_CATALOG, get_schemas()["audit"], USE_EXTERNAL, AUDIT_BUCKET
-    )
+    for schema in (TARGET_SCHEMA, AUDIT_SCHEMA, EXCEPTION_SCHEMA):
+        spark.sql(f"CREATE SCHEMA IF NOT EXISTS {TARGET_CATALOG}.{schema}")
+    # Platinum is created as managed tables, so the loggers never need an S3 location.
+    audit_logger = audit_log.AuditLogger(spark, TARGET_CATALOG, AUDIT_SCHEMA, False, None)
     audit_logger.ensure_table()
 
     for p in promoted:
         source_fqn = f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.{p.table}"
         target_fqn = f"{TARGET_CATALOG}.{TARGET_SCHEMA}.{p.table}"
+        if not rules[p.table]:
+            failures.append((p.table, "no DQ rules in gold_to_platinum.yml; not published"))
+            print(f"  FAILED {target_fqn}: no DQ rules, not published")
+            continue
         try:
             with audit_logger.audit(target_fqn, audit_log.Action.OVERWRITE) as log_ctx:
                 n = platinum.publish_table(
                     spark, p, source_fqn, target_fqn,
                     platinum.read_columns(spark, SOURCE_CATALOG, SOURCE_SCHEMA, p.table),
                     platinum.read_table_tags(spark, SOURCE_CATALOG, SOURCE_SCHEMA, p.table),
+                    rules[p.table],
+                    f"{TARGET_CATALOG}.{EXCEPTION_SCHEMA}.{p.table}_quarantine",
+                    gate_log=dq_gate_log.DqGateLogger(
+                        spark, TARGET_CATALOG, AUDIT_SCHEMA, "platinum", target_fqn, False, None
+                    ),
                 )
                 log_ctx.set_count(n)
             print(f"  published {target_fqn}: {n} row(s), {len(p.kept)} column(s)")
