@@ -30,6 +30,7 @@ PII_TAG = "pii"
 INCLUDE = "include"
 OMIT = "omit"
 LAST4 = "last4"
+FORCE_NULL = "null"
 
 
 def decide_column(sensitivity: Optional[str], pii: Optional[str] = None) -> tuple:
@@ -88,9 +89,27 @@ def build_plan(table: str, table_tags: Dict[str, str], columns: List[dict],
     return plan
 
 
-def select_expr(col: ColumnPlan) -> str:
-    """One SELECT-list item for a kept column."""
+def load_treat(rules_file: str, table: str) -> Dict[str, str]:
+    """The `treat` map of one table in the rules file: {column: 'null'}. Empty if none.
+
+    `treat` can only make a kept column stricter (force it to NULL); it never lets a column out.
+    """
+    import yaml
+
+    with open(rules_file) as f:
+        entry = ((yaml.safe_load(f) or {}).get("tables") or {}).get(table) or {}
+    treat = entry.get("treat") or {}
+    bad = {c: v for c, v in treat.items() if v != FORCE_NULL}
+    if bad:
+        raise ValueError(f"'treat' for '{table}' in '{rules_file}' allows only '{FORCE_NULL}', got {bad}.")
+    return treat
+
+
+def select_expr(col: ColumnPlan, treat: Optional[Dict[str, str]] = None) -> str:
+    """One SELECT-list item for a kept column. `treat` can force a column to NULL."""
     quoted = f"`{col.name}`"
+    if (treat or {}).get(col.name) == FORCE_NULL:
+        return f"CAST(NULL AS {col.data_type}) AS {quoted}"
     if col.treatment == LAST4:
         # A value of 4 characters or fewer would show in full, so it is masked completely.
         text = f"cast({quoted} as string)"
@@ -159,12 +178,18 @@ def plan_schema(spark, catalog: str, schema: str, only: Optional[str] = None) ->
 
 def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
                   source_columns: List[dict], source_table_tags: Dict[str, str],
-                  checks: List[dict], quarantine_fqn: str, gate_log=None) -> int:
+                  checks: List[dict], quarantine_fqn: str, gate_log=None,
+                  treat: Optional[Dict[str, str]] = None,
+                  output_checks: Optional[List[dict]] = None) -> int:
     """Rebuild one Platinum table from Gold and copy its tags. Returns the row count.
 
-    The DQ gate runs on the full Gold rows first (so a rule can use a column Platinum drops,
-    such as the row-filter key). Failing rows go to `quarantine_fqn`; passing rows are published
-    with only the allowed columns. If no row passes, the existing Platinum table is left as it is.
+    Two gates, both pass/fail, both quarantining to `quarantine_fqn`:
+      1. Input gate (`checks`) on the full Gold rows, so a rule can use a column Platinum drops,
+         such as the row-filter key.
+      2. Output gate (`output_checks`) on the rows after the column handling (allowed columns kept,
+         masks applied, `treat` columns forced to NULL). It verifies the handling worked, for example
+         that a column meant to be NULL is NULL; a row that fails is not published.
+    If no row passes a gate, the existing Platinum table is left as it is.
     """
     from . import dq  # imported here so the module can be tested without Spark
 
@@ -174,10 +199,19 @@ def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
     )
     if good.isEmpty():
         raise ValueError(f"No row of {source_fqn} passed the DQ gate; {target_fqn} was left unchanged.")
-    (
-        good.selectExpr(*[select_expr(c) for c in plan.kept])
-        .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_fqn)
-    )
+    treat = treat or {}
+    unknown = sorted(set(treat) - {c.name for c in plan.kept})
+    if unknown:
+        raise ValueError(f"'treat' for '{plan.table}' names column(s) {unknown} that are not kept in Platinum.")
+    out = good.selectExpr(*[select_expr(c, treat) for c in plan.kept])
+    if output_checks:
+        out = dq.quality_gate(
+            spark, plan.table, out, output_checks, quarantine_fqn,
+            "gold_to_platinum_output", gate_log=gate_log,
+        )
+        if out.isEmpty():
+            raise ValueError(f"No row of {source_fqn} passed the output gate; {target_fqn} was left unchanged.")
+    out.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_fqn)
 
     # Table tags: carry the Gold tags over, but not the gate tag itself, and record provenance.
     tags = {k: v for k, v in source_table_tags.items() if k != TABLE_GATE_TAG}

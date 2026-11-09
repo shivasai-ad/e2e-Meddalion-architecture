@@ -92,12 +92,15 @@ display(report_df)
 promoted = [p for p in plans if p.promoted]
 print(f"Plan: {len(promoted)} of {len(plans)} Gold table(s) will be promoted to {TARGET_CATALOG}.{TARGET_SCHEMA}.")
 rules = {p.table: dq.load_table_rules(RULES_FILE, p.table) for p in promoted}
+output_rules = {p.table: dq.load_table_rules(RULES_FILE, p.table, "output_checks") for p in promoted}
+treats = {p.table: platinum.load_treat(RULES_FILE, p.table) for p in promoted}
 for p in plans:
     left_out = [c.name for c in p.columns if c.treatment == platinum.OMIT]
     dq_note = ""
     if p.promoted:
         n_rules = len(rules[p.table] or [])
-        dq_note = (f" | DQ: {n_rules} check(s)" if n_rules
+        dq_note = (f" | DQ: {n_rules} input + {len(output_rules[p.table])} output check(s), "
+                   f"{len(treats[p.table])} column(s) forced to NULL" if n_rules
                    else " | DQ: NO RULES in gold_to_platinum.yml, will not be published")
     print(f"  {p.table}: {'PROMOTE' if p.promoted else 'skip'} - {p.reason}"
           + (f" | {len(p.kept)} column(s) kept, {len(left_out)} left out" if p.promoted else "") + dq_note)
@@ -137,6 +140,8 @@ else:
                     gate_log=dq_gate_log.DqGateLogger(
                         spark, TARGET_CATALOG, AUDIT_SCHEMA, "platinum", target_fqn, False, None
                     ),
+                    treat=treats[p.table],
+                    output_checks=output_rules[p.table],
                 )
                 log_ctx.set_count(n)
             print(f"  published {target_fqn}: {n} row(s), {len(p.kept)} column(s)")

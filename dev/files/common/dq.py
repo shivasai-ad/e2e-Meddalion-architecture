@@ -30,7 +30,7 @@ def get_engine():
     return _ENGINE
 
 
-def load_table_rules(rules_file: str, entity: str) -> Optional[List[Dict]]:
+def load_table_rules(rules_file: str, entity: str, key: str = "checks") -> Optional[List[Dict]]:
     """Return the DQX checks for one table from a layer-level rules file.
 
     Every check is pass/fail, so each one runs with criticality "error" and a
@@ -43,8 +43,10 @@ def load_table_rules(rules_file: str, entity: str) -> Optional[List[Dict]]:
     table = (raw.get("tables") or {}).get(entity)
     if table is None:
         return None
-    checks = table.get("checks") or []
+    checks = table.get(key) or []
     if not checks:
+        if key != "checks":
+            return []  # optional rule list (for example Platinum's output_checks)
         raise ValueError(f"DQ rules for '{entity}' in '{rules_file}' have no checks.")
     for check in checks:
         level = check.get("criticality", "error")
