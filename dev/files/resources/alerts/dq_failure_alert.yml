@@ -44,7 +44,7 @@ resources:
           ORDER BY event_timestamp DESC
           LIMIT 1
         )
-        SELECT Layer, Entity, `Run (UTC)`, Checked, Passed, Quarantined, `Failed rules`
+        SELECT Layer, Entity, `Run (UTC)`, Checked, Passed, Quarantined, `Failed rules`, `Job ID`, `Run ID`
         FROM (
           SELECT 0 AS ord, g.event_timestamp AS ts,
                  INITCAP(g.layer) AS Layer,
@@ -55,13 +55,15 @@ resources:
                  g.rows_quarantined AS Quarantined,
                  CASE WHEN g.rows_quarantined = 0 THEN 'None - all checks passed'
                       ELSE ARRAY_JOIN(TRANSFORM(MAP_ENTRIES(g.failed_rules),
-                           r -> CONCAT(r.key, ': ', CAST(r.value AS STRING))), ', ') END AS `Failed rules`
+                           r -> CONCAT(r.key, ': ', CAST(r.value AS STRING))), ', ') END AS `Failed rules`,
+                 g.job_id AS `Job ID`,
+                 g.run_id AS `Run ID`
           FROM `${var.catalog}`.`${var.audit_schema}`.`dq_gate_log` g
           JOIN latest l ON g.run_id = l.run_id AND g.job_id = l.job_id
           WHERE g.layer IN ('silver', 'gold')
           UNION ALL
           SELECT 1, CAST(NULL AS TIMESTAMP), '-', '-', '-', CAST(NULL AS BIGINT), CAST(NULL AS BIGINT), CAST(NULL AS BIGINT),
-                 'No Silver or Gold DQ gate result was logged in the last 30 minutes'
+                 'No Silver or Gold DQ gate result was logged in the last 30 minutes', '-', '-'
           WHERE NOT EXISTS (SELECT 1 FROM latest)
         )
         ORDER BY ord, ts
