@@ -237,3 +237,106 @@ def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
                 f"SET TAGS ('{SENSITIVITY_TAG}' = '{_esc(col.sensitivity)}')"
             )
     return spark.table(target_fqn).count()
+
+
+# ── Publish as a view ──────────────────────────────────────────────────────
+# `publish_as = view`: Platinum is a view over Gold instead of a copied table. The DQ rules become the
+# view's WHERE clause, and the rows that fail them are exposed by a second (quarantine) view.
+
+def rule_condition(rule: dict) -> str:
+    """SQL condition that is TRUE for a passing row, written from one DQX rule.
+
+    Only row-level functions can be a view filter. A NULL result counts as a failure.
+    """
+    check = rule.get("check") or {}
+    function = check.get("function")
+    args = check.get("arguments") or {}
+    col = f"`{args['column']}`" if isinstance(args.get("column"), str) else None
+    if function == "is_not_null" and col:
+        return f"{col} IS NOT NULL"
+    if function == "is_not_null_and_not_empty" and col:
+        return f"({col} IS NOT NULL AND trim(cast({col} as string)) <> '')"
+    if function == "is_in_list" and col:
+        # DQX metadata: a quoted entry is a literal value.
+        return f"{col} IN ({', '.join(str(v) for v in args['allowed'])})"
+    if function == "regex_match" and col:
+        cond = f"{col} RLIKE '{_esc(args['regex'])}'"
+        return f"NOT ({cond})" if args.get("negate") else cond
+    if function == "sql_expression":
+        return f"({args['expression']})"
+    raise ValueError(
+        f"DQ rule '{rule.get('name')}' uses '{function}', which cannot be written as a view filter. "
+        f"Use is_not_null, is_not_null_and_not_empty, is_in_list, regex_match or sql_expression, "
+        f"or publish this table as a table."
+    )
+
+
+def _validate_for_publish(plan: TablePlan, treat: Dict[str, str], checks: List[dict]) -> None:
+    unknown = sorted(set(treat) - {c.name for c in plan.kept})
+    if unknown:
+        raise ValueError(f"'treat' for '{plan.table}' names column(s) {unknown} that are not kept in Platinum.")
+    dropped_refs = sorted(checked_columns(checks) - {c.name for c in plan.kept})
+    if dropped_refs:
+        raise ValueError(
+            f"DQ rules for '{plan.table}' use column(s) {dropped_refs} that Platinum does not keep, so the "
+            f"gate cannot check them. Remove those rules, or keep the column in Platinum."
+        )
+
+
+def publish_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
+                 source_columns: List[dict], source_table_tags: Dict[str, str],
+                 checks: List[dict], quarantine_fqn: str, gate_log=None,
+                 treat: Optional[Dict[str, str]] = None) -> int:
+    """Create or replace the Platinum view and the quarantine view. Returns the rows the view exposes.
+
+    The view is `SELECT <kept columns, masks applied> FROM <gold> WHERE <every rule passes>`. The rules
+    run on the handled values, as in the table gate, so the handled columns are selected in a subquery
+    first. The counts for the gate log are taken from Gold at this moment. If no row passes, the
+    existing view is left as it is.
+    """
+    treat = treat or {}
+    _validate_for_publish(plan, treat, checks)
+
+    inner = f"SELECT {', '.join(select_expr(c, treat) for c in plan.kept)} FROM {source_fqn}"
+    conds = [(r["name"], rule_condition(r)) for r in checks]
+    passes = " AND ".join(f"coalesce({c}, false)" for _, c in conds)
+
+    # One pass over Gold for the counts: rows, rows failing any rule, and rows failing each rule.
+    per_rule = ", ".join(
+        f"sum(CASE WHEN NOT coalesce({c}, false) THEN 1 ELSE 0 END) AS r{i}" for i, (_, c) in enumerate(conds)
+    )
+    counts = spark.sql(
+        f"SELECT count(*) AS total, sum(CASE WHEN NOT ({passes}) THEN 1 ELSE 0 END) AS bad, {per_rule} "
+        f"FROM ({inner})"
+    ).collect()[0]
+    total, bad = int(counts["total"] or 0), int(counts["bad"] or 0)
+    passed = total - bad
+    failed_rules = {name: int(counts[f"r{i}"] or 0) for i, (name, _) in enumerate(conds) if counts[f"r{i}"]}
+    if gate_log:
+        gate_log.log(plan.table, "gold_to_platinum", total, passed, bad, failed_rules, quarantine_fqn)
+    if passed == 0:
+        raise ValueError(f"No row of {source_fqn} passes the DQ rules; {target_fqn} was left unchanged.")
+
+    spark.sql(f"CREATE OR REPLACE VIEW {target_fqn} AS SELECT * FROM ({inner}) WHERE {passes}")
+    failed_names = ", ".join(f"CASE WHEN NOT coalesce({c}, false) THEN '{_esc(n)}' END" for n, c in conds)
+    spark.sql(
+        f"CREATE OR REPLACE VIEW {quarantine_fqn} AS "
+        f"SELECT *, filter(array({failed_names}), x -> x IS NOT NULL) AS _dq_failed_rules "
+        f"FROM ({inner}) WHERE NOT ({passes})"
+    )
+
+    # Tags and comments on the view (a view does not inherit them from Gold).
+    tags = {k: v for k, v in source_table_tags.items() if k != TABLE_GATE_TAG}
+    tags["promoted_from"] = source_fqn
+    pairs = ", ".join(f"'{_esc(k)}' = '{_esc(str(v))}'" for k, v in tags.items())
+    spark.sql(f"ALTER VIEW {target_fqn} SET TAGS ({pairs})")
+    comments = {c["name"]: c["comment"] for c in source_columns}
+    for col in plan.kept:
+        if comments.get(col.name):
+            spark.sql(f"COMMENT ON COLUMN {target_fqn}.`{col.name}` IS '{_esc(comments[col.name])}'")
+        if col.sensitivity:
+            spark.sql(
+                f"ALTER TABLE {target_fqn} ALTER COLUMN `{col.name}` "
+                f"SET TAGS ('{SENSITIVITY_TAG}' = '{_esc(col.sensitivity)}')"
+            )
+    return passed

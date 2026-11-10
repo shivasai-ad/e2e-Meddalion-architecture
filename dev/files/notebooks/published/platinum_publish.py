@@ -24,6 +24,9 @@
 # MAGIC The audit log, the DQ gate log and the quarantine tables sit in the Platinum catalog
 # MAGIC (`<target_schema>_audit`, `<target_schema>_exception`), owned by the platform team.
 # MAGIC
+# MAGIC **Publish as a table or a view** (`publish_as`): a table is a rebuilt copy; a view reads Gold live, its
+# MAGIC `WHERE` clause is the DQ rules written as SQL, and `<table>_quarantine` becomes a view of the failing rows.
+# MAGIC
 # MAGIC Each table is rebuilt in full and its Gold tags are copied across, so tag-based masks and
 # MAGIC policies match Platinum too. If no row passes, the existing Platinum table is left unchanged.
 # MAGIC A table that fails is reported and skipped; the run carries on and fails at the end if any table failed.
@@ -46,6 +49,7 @@ dbutils.widgets.text("target_catalog", "dev_platinum_catalog", label="Platinum c
 dbutils.widgets.text("target_schema", "ad_rls_testing_platinum", label="Platinum schema")
 dbutils.widgets.text("entity", "ALL", label="Table (or ALL)")
 dbutils.widgets.text("dry_run", "false", label="Dry run (true = plan only)")
+dbutils.widgets.text("publish_as", "table", label="Publish as (table or view)")
 for _name in ("job_id", "job_run_id", "task_run_id", "task_key"):
     dbutils.widgets.text(_name, "")  # set by the job (base_parameters), for the audit log
 job_context.set_from_widgets(dbutils)
@@ -56,6 +60,9 @@ TARGET_CATALOG = dbutils.widgets.get("target_catalog").strip()
 TARGET_SCHEMA = dbutils.widgets.get("target_schema").strip()
 ENTITY = dbutils.widgets.get("entity").strip()
 DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
+PUBLISH_AS = dbutils.widgets.get("publish_as").strip().lower()
+if PUBLISH_AS not in ("table", "view"):
+    raise ValueError(f"publish_as must be 'table' or 'view', got '{PUBLISH_AS}'.")
 
 # The audit log, the DQ gate log and the quarantine tables live in the Platinum catalog, next to the
 # published schema, so the platform team owns them. The Datahub principal gets no access to them.
@@ -90,7 +97,7 @@ report_df = spark.createDataFrame(
 display(report_df)
 
 promoted = [p for p in plans if p.promoted]
-print(f"Plan: {len(promoted)} of {len(plans)} Gold table(s) will be promoted to {TARGET_CATALOG}.{TARGET_SCHEMA}.")
+print(f"Plan: {len(promoted)} of {len(plans)} Gold table(s) will be promoted to {TARGET_CATALOG}.{TARGET_SCHEMA} as a {PUBLISH_AS}.")
 rules = {p.table: dq.load_table_rules(RULES_FILE, p.table) for p in promoted}
 treats = {p.table: platinum.load_treat(RULES_FILE, p.table) for p in promoted}
 for p in plans:
@@ -130,7 +137,8 @@ else:
             continue
         try:
             with audit_logger.audit(target_fqn, audit_log.Action.OVERWRITE) as log_ctx:
-                n = platinum.publish_table(
+                publish = platinum.publish_view if PUBLISH_AS == "view" else platinum.publish_table
+                n = publish(
                     spark, p, source_fqn, target_fqn,
                     platinum.read_columns(spark, SOURCE_CATALOG, SOURCE_SCHEMA, p.table),
                     platinum.read_table_tags(spark, SOURCE_CATALOG, SOURCE_SCHEMA, p.table),
@@ -142,7 +150,7 @@ else:
                     treat=treats[p.table],
                 )
                 log_ctx.set_count(n)
-            print(f"  published {target_fqn}: {n} row(s), {len(p.kept)} column(s)")
+            print(f"  published {target_fqn} as a {PUBLISH_AS}: {n} row(s), {len(p.kept)} column(s)")
         except Exception as e:  # the audit context has already logged the failure
             failures.append((p.table, str(e)[:300]))
             print(f"  FAILED {target_fqn}: {e}")
