@@ -20,9 +20,12 @@ resources:
       custom_description: |
         DQ summary for the latest Silver and Gold pipeline run: one row per layer and entity, from dq_gate_log.
 
-        Summary table (all runs):  ${workspace.host}/explore/data/${var.catalog}/${var.audit_schema}/dq_gate_log
-        Quarantined records:       ${workspace.host}/explore/data/${var.catalog}/${var.formatted_exception_schema}/orders_quarantine
-        (in the quarantine table, filter on _dq_run_ts for the run time shown below)
+        Summary table (all runs):   ${workspace.host}/explore/data/${var.catalog}/${var.audit_schema}/dq_gate_log
+        Silver quarantined records of the latest run:
+        ${workspace.host}/explore/data/${var.catalog}/${var.formatted_exception_schema}/orders_quarantine_latest_run
+        Gold quarantined records of the latest run (exists once a Gold row has failed):
+        ${workspace.host}/explore/data/${var.catalog}/${var.published_exception_schema}/orders_quarantine_latest_run
+        "Latest run" moves on with each run, so click soon after the email.
 
         {{QUERY_RESULT_TABLE}}
 
