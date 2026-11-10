@@ -1,11 +1,14 @@
 # DQ failure -> email (ported from aws-databricks-goldenpath docs/databricks_objects/09_alerts/dq_failure_alert.yml, ADP-933)
 #
-# A Databricks SQL alert, every 30 minutes. It reads the two tables the Platinum job writes in
-# <platinum_catalog>.<platinum_schema>_audit:
+# Three Databricks SQL alerts, one per pipeline step: Silver, Gold (both tasks of e2e_medallion_pipeline) and
+# Platinum (e2e_platinum_publish). Each step is followed by an alert task that evaluates its own alert after
+# every run, so the data owner gets a separate email per layer. Their own schedules are paused so a run is not emailed twice. Silver and Gold read
+# <catalog>.<audit_schema>; Platinum reads <platinum_catalog>.<platinum_schema>_audit:
 #   dq_gate_log  one row per DQ gate run; status = 'quarantined' when any row failed a rule.
 #   audit_log    one row per write; status = 'failure' when a write raised.
 # One row of text per failure; no rows means the alert stays OK and sends nothing.
-# The query window (30 minutes) matches the schedule, so each failure is emailed once.
+# The query window is 15 minutes, which covers a run and the alert task right after it. Two runs inside
+# 15 minutes would both be listed in the second email.
 #
 # {{QUERY_RESULT_TABLE}} is NOT a bundle placeholder. It is a Databricks alert variable that puts the
 # query result into the email. Leave it as it is.
@@ -14,25 +17,114 @@
 # platinum_catalog / platinum_schema), and it emails the user who deploys it, so there is no
 # team_name, data_owner_email or service principal variable to set.
 
+# Each email line is one gate run: the gate log summary (layer, entity, rows, failed rules, quarantine table, run time)
+# followed by up to 5 sample quarantined records with a few columns. Silver samples orders, Platinum samples asset.
+# Gold has no quarantine table yet (no Gold row has failed), so its email carries the gate summary only.
+
 resources:
   alerts:
-    dq_failure_alert:
-      display_name: "[${bundle.target}] E2E Platinum - DQ failure"
-      custom_summary: "Data quality alert: Platinum records quarantined"
+    dq_failure_alert_silver:
+      display_name: "[${bundle.target}] E2E Silver - DQ failure"
+      custom_summary: "Data quality alert: Silver records quarantined or a write failed"
       custom_description: |
-        Data quality checks on the Platinum publish found records that break the agreed rules.
-        These records were quarantined and were not published. Each row below is one failed check.
+        The Silver data quality checks found records that break the agreed rules, or a Silver write failed.
+        Quarantined records were not promoted. Each row below is one failed check.
 
         {{QUERY_RESULT_TABLE}}
 
-        Next step: review the quarantined records, fix the source data (or the rule), and the next run will publish them.
+        Next step: review the quarantined records, fix the source data (or the rule), and the next run will promote them.
 
       permissions:
         - user_name: ${workspace.current_user.userName}
           level: CAN_MANAGE
 
-      # One row per failed check, in a single text column `failed_check`. The email only shows the
-      # column the alert evaluates, so the reason has to be in it. No line breaks inside the text.
+      # One row per failed check, in a single text column `failed_check` (the email shows only the column
+      # the alert evaluates). No line breaks inside the text.
+      query_text: |
+        SELECT failed_check FROM (
+          SELECT CONCAT(
+                   INITCAP(layer), ' gate - ', entity, ': ',
+                   CAST(rows_quarantined AS STRING), ' of ', CAST(rows_checked AS STRING), ' rows quarantined. ',
+                   'Failed rules: ',
+                   COALESCE(ARRAY_JOIN(TRANSFORM(MAP_ENTRIES(failed_rules),
+                                                 r -> CONCAT(r.key, ' (', CAST(r.value AS STRING), ')')), ', '),
+                            'not recorded'), '. ',
+                   'Quarantine: ', COALESCE(quarantine_table, 'not recorded'), '. ',
+                   'Run: ', DATE_FORMAT(event_timestamp, 'yyyy-MM-dd HH:mm'), ' UTC',
+                   COALESCE(CONCAT('. Sample records: ', s.sample), '')
+                 ) AS failed_check,
+                 event_timestamp
+          FROM `${var.catalog}`.`${var.audit_schema}`.`dq_gate_log` g
+          LEFT JOIN (
+            -- up to 5 quarantined orders from this run, a few columns each, with the rules they failed
+            SELECT 'orders' AS sample_entity,
+                   ARRAY_JOIN(COLLECT_LIST(CONCAT('[order_id=', COALESCE(order_id, 'NULL'),
+                              ', customer=', COALESCE(customer_name, 'NULL'),
+                              ', status=', COALESCE(status, 'NULL'),
+                              ', amount=', COALESCE(CAST(amount AS STRING), 'NULL'),
+                              ', failed: ', COALESCE(ARRAY_JOIN(TRANSFORM(_errors, e -> e.name), ', '), 'unknown'), ']')),
+                              ' ; ') AS sample
+            FROM (SELECT * FROM `${var.catalog}`.`${var.formatted_exception_schema}`.`orders_quarantine`
+                  WHERE _dq_run_ts >= current_timestamp() - INTERVAL 15 MINUTES LIMIT 5)
+          ) s ON g.entity = s.sample_entity
+          WHERE status = 'quarantined'
+            AND layer = 'silver'
+            AND event_timestamp >= current_timestamp() - INTERVAL 15 MINUTES
+
+          UNION ALL
+
+          SELECT CONCAT(
+                   'Write failed - ', `schema`, '.', `table`, ': ', COALESCE(error_type, 'error'), ' - ',
+                   LEFT(COALESCE(error_message, ''), 300), '. ',
+                   'Run: ', DATE_FORMAT(event_timestamp, 'yyyy-MM-dd HH:mm'), ' UTC'
+                 ),
+                 event_timestamp
+          FROM `${var.catalog}`.`${var.audit_schema}`.`audit_log`
+          WHERE status = 'failure'
+            AND `schema` LIKE '%\_silver'
+            AND event_timestamp >= current_timestamp() - INTERVAL 15 MINUTES
+        )
+        ORDER BY event_timestamp DESC
+
+      warehouse_id: ${var.warehouse_id}
+
+      # IS_NOT_NULL needs no threshold. The Golden Path template compares to an empty string
+      # (NOT_EQUAL ""), but the alerts API rejects an empty threshold value (seen with Databricks CLI 1.10).
+      evaluation:
+        comparison_operator: "IS_NOT_NULL"
+        source:
+          name: "failed_check"
+          display: "failed_check"
+        empty_result_state: "OK"   # no rows = no failures = healthy
+        notification:
+          notify_on_ok: false
+          retrigger_seconds: 1
+          subscriptions:
+            - user_email: ${workspace.current_user.userName}
+
+      # Paused: the job evaluates this alert after every run (alert_task).
+      schedule:
+        pause_status: "PAUSED"
+        quartz_cron_schedule: "0 */30 * * * ?"
+        timezone_id: "UTC"
+
+    dq_failure_alert_gold:
+      display_name: "[${bundle.target}] E2E Gold - DQ failure"
+      custom_summary: "Data quality alert: Gold records quarantined or a write failed"
+      custom_description: |
+        The Gold data quality checks found records that break the agreed rules, or a Gold write failed.
+        Quarantined records were not promoted. Each row below is one failed check.
+
+        {{QUERY_RESULT_TABLE}}
+
+        Next step: review the quarantined records, fix the source data (or the rule), and the next run will promote them.
+
+      permissions:
+        - user_name: ${workspace.current_user.userName}
+          level: CAN_MANAGE
+
+      # One row per failed check, in a single text column `failed_check` (the email shows only the column
+      # the alert evaluates). No line breaks inside the text.
       query_text: |
         SELECT failed_check FROM (
           SELECT CONCAT(
@@ -46,29 +138,30 @@ resources:
                    'Run: ', DATE_FORMAT(event_timestamp, 'yyyy-MM-dd HH:mm'), ' UTC'
                  ) AS failed_check,
                  event_timestamp
-          FROM `${var.platinum_catalog}`.`${var.platinum_schema}_audit`.`dq_gate_log`
+          FROM `${var.catalog}`.`${var.audit_schema}`.`dq_gate_log`
           WHERE status = 'quarantined'
-            AND event_timestamp >= current_timestamp() - INTERVAL 30 MINUTES
+            AND layer = 'gold'
+            AND event_timestamp >= current_timestamp() - INTERVAL 15 MINUTES
 
           UNION ALL
 
           SELECT CONCAT(
-                   'Write failed - ', `table`, ': ', COALESCE(error_type, 'error'), ' - ',
+                   'Write failed - ', `schema`, '.', `table`, ': ', COALESCE(error_type, 'error'), ' - ',
                    LEFT(COALESCE(error_message, ''), 300), '. ',
                    'Run: ', DATE_FORMAT(event_timestamp, 'yyyy-MM-dd HH:mm'), ' UTC'
                  ),
                  event_timestamp
-          FROM `${var.platinum_catalog}`.`${var.platinum_schema}_audit`.`audit_log`
+          FROM `${var.catalog}`.`${var.audit_schema}`.`audit_log`
           WHERE status = 'failure'
-            AND event_timestamp >= current_timestamp() - INTERVAL 30 MINUTES
+            AND `schema` LIKE '%\_gold'
+            AND event_timestamp >= current_timestamp() - INTERVAL 15 MINUTES
         )
         ORDER BY event_timestamp DESC
 
       warehouse_id: ${var.warehouse_id}
 
       # IS_NOT_NULL needs no threshold. The Golden Path template compares to an empty string
-      # (NOT_EQUAL ""), but the alerts API rejects an empty threshold value ("evaluation.threshold is
-      # provided but doesn't contain any value", seen deploying with Databricks CLI 1.10 on 2026-11-10).
+      # (NOT_EQUAL ""), but the alerts API rejects an empty threshold value (seen with Databricks CLI 1.10).
       evaluation:
         comparison_operator: "IS_NOT_NULL"
         source:
@@ -77,11 +170,94 @@ resources:
         empty_result_state: "OK"   # no rows = no failures = healthy
         notification:
           notify_on_ok: false
-          retrigger_seconds: 1     # email on every run that finds new failures
+          retrigger_seconds: 1
           subscriptions:
             - user_email: ${workspace.current_user.userName}
 
+      # Paused: the job evaluates this alert after every run (alert_task).
       schedule:
-        pause_status: "UNPAUSED"
-        quartz_cron_schedule: "0 */30 * * * ?"   # every 30 min, in step with the query window
+        pause_status: "PAUSED"
+        quartz_cron_schedule: "0 */30 * * * ?"
+        timezone_id: "UTC"
+
+    dq_failure_alert_platinum:
+      display_name: "[${bundle.target}] E2E Platinum - DQ failure"
+      custom_summary: "Data quality alert: Platinum records quarantined or a write failed"
+      custom_description: |
+        The Platinum data quality checks found records that break the agreed rules, or a Platinum write failed.
+        Quarantined records were not promoted. Each row below is one failed check.
+
+        {{QUERY_RESULT_TABLE}}
+
+        Next step: review the quarantined records, fix the source data (or the rule), and the next run will promote them.
+
+      permissions:
+        - user_name: ${workspace.current_user.userName}
+          level: CAN_MANAGE
+
+      # One row per failed check, in a single text column `failed_check` (the email shows only the column
+      # the alert evaluates). No line breaks inside the text.
+      query_text: |
+        SELECT failed_check FROM (
+          SELECT CONCAT(
+                   INITCAP(layer), ' gate - ', entity, ': ',
+                   CAST(rows_quarantined AS STRING), ' of ', CAST(rows_checked AS STRING), ' rows quarantined. ',
+                   'Failed rules: ',
+                   COALESCE(ARRAY_JOIN(TRANSFORM(MAP_ENTRIES(failed_rules),
+                                                 r -> CONCAT(r.key, ' (', CAST(r.value AS STRING), ')')), ', '),
+                            'not recorded'), '. ',
+                   'Quarantine: ', COALESCE(quarantine_table, 'not recorded'), '. ',
+                   'Run: ', DATE_FORMAT(event_timestamp, 'yyyy-MM-dd HH:mm'), ' UTC',
+                   COALESCE(CONCAT('. Sample records: ', s.sample), '')
+                 ) AS failed_check,
+                 event_timestamp
+          FROM `${var.platinum_catalog}`.`${var.platinum_schema}_audit`.`dq_gate_log` g
+          LEFT JOIN (
+            -- up to 5 quarantined assets, a few columns each (the quarantine view or table lists current failures)
+            SELECT 'asset' AS sample_entity,
+                   ARRAY_JOIN(COLLECT_LIST(CONCAT('[', COALESCE(asset_name, 'NULL'),
+                              ', type=', COALESCE(asset_type, 'NULL'),
+                              ', status=', COALESCE(status, 'NULL'), ']')),
+                              ' ; ') AS sample
+            FROM (SELECT * FROM `${var.platinum_catalog}`.`${var.platinum_schema}_exception`.`asset_quarantine` LIMIT 5)
+          ) s ON g.entity = s.sample_entity
+          WHERE status = 'quarantined'
+            AND layer = 'platinum'
+            AND event_timestamp >= current_timestamp() - INTERVAL 15 MINUTES
+
+          UNION ALL
+
+          SELECT CONCAT(
+                   'Write failed - ', `schema`, '.', `table`, ': ', COALESCE(error_type, 'error'), ' - ',
+                   LEFT(COALESCE(error_message, ''), 300), '. ',
+                   'Run: ', DATE_FORMAT(event_timestamp, 'yyyy-MM-dd HH:mm'), ' UTC'
+                 ),
+                 event_timestamp
+          FROM `${var.platinum_catalog}`.`${var.platinum_schema}_audit`.`audit_log`
+          WHERE status = 'failure'
+            
+            AND event_timestamp >= current_timestamp() - INTERVAL 15 MINUTES
+        )
+        ORDER BY event_timestamp DESC
+
+      warehouse_id: ${var.warehouse_id}
+
+      # IS_NOT_NULL needs no threshold. The Golden Path template compares to an empty string
+      # (NOT_EQUAL ""), but the alerts API rejects an empty threshold value (seen with Databricks CLI 1.10).
+      evaluation:
+        comparison_operator: "IS_NOT_NULL"
+        source:
+          name: "failed_check"
+          display: "failed_check"
+        empty_result_state: "OK"   # no rows = no failures = healthy
+        notification:
+          notify_on_ok: false
+          retrigger_seconds: 1
+          subscriptions:
+            - user_email: ${workspace.current_user.userName}
+
+      # Paused: the job evaluates this alert after every run (alert_task).
+      schedule:
+        pause_status: "PAUSED"
+        quartz_cron_schedule: "0 */30 * * * ?"
         timezone_id: "UTC"

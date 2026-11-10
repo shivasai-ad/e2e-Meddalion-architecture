@@ -49,6 +49,12 @@ variables:
       Schema the Platinum publish job writes to (ADP-1026). A manual test schema in
       dev_platinum_catalog, not managed by Terraform.
     default: ad_rls_testing_platinum
+  audit_schema:
+    description: Audit schema holding the Silver and Gold dq_gate_log and audit_log (config_loader SCHEMAS['audit']).
+    default: e2e_medallion_metadata_v2_audit
+  formatted_exception_schema:
+    description: Silver quarantine schema; the Silver DQ alert samples quarantined records from it (config_loader SCHEMAS['formatted_exception']).
+    default: e2e_medallion_metadata_v2_formatted_exception
   warehouse_id:
     description: SQL warehouse the DQ failure alert runs its query on. Set per target below.
 
