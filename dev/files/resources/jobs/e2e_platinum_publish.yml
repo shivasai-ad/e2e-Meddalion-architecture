@@ -22,6 +22,8 @@ resources:
           default: "ALL"
         - name: dry_run
           default: "false"
+        - name: publish_as
+          default: "table"
 
       tasks:
         - task_key: platinum_publish
@@ -34,6 +36,7 @@ resources:
               target_schema: ${var.platinum_schema}
               entity: "{{job.parameters.entity}}"
               dry_run: "{{job.parameters.dry_run}}"
+              publish_as: "{{job.parameters.publish_as}}"
               job_id: "{{job.id}}"
               job_run_id: "{{job.run_id}}"
               task_run_id: "{{task.run_id}}"
