@@ -17,6 +17,8 @@ import yaml
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
+from .job_context import job_value
+
 _ENGINE = None
 
 
@@ -118,6 +120,8 @@ def quality_gate(
     (
         bad_df.withColumn("_dq_label", F.lit(label))
         .withColumn("_dq_run_ts", F.current_timestamp())
+        .withColumn("_dq_job_id", F.lit(job_value(spark, "spark.databricks.job.id", "job_id")).cast("string"))
+        .withColumn("_dq_job_run_id", F.lit(job_value(spark, "spark.databricks.job.runId", "job_run_id")).cast("string"))
         .write.mode("append")
         .option("mergeSchema", "true")
         .saveAsTable(quarantine_fqn)
