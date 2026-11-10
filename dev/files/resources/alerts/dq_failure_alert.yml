@@ -1,11 +1,9 @@
-# Three Databricks SQL alerts. An alert email draws ONE table (the alert query's result). So the Silver/Gold
-# report is two alerts, each with real columns, both evaluated by an alert_task after the last task of
-# e2e_medallion_pipeline, so two emails go out after every run:
-#   dq_run_summary   one row per layer and entity from dq_gate_log for the latest Silver/Gold run (job_id and
-#                    run_id), selected columns; says "All checks passed" when nothing was quarantined; a run
-#                    with no gate result still returns one row saying so. The description links to dq_gate_log.
-#   dq_run_records   the quarantined Silver records of that run from orders_quarantine, with the rules they
-#                    failed. Only sent when there are such records. The description links to the table.
+# Two Databricks SQL alerts.
+#   dq_run_summary  Silver + Gold. One email after every run of e2e_medallion_pipeline (an alert_task after
+#                   gold_aggregate), even when everything passed. A table with one row per layer and entity from
+#                   dq_gate_log for the latest Silver/Gold run (matching job_id and run_id): run time, rows checked,
+#                   passed, quarantined and the failed rules with their counts. It carries no records; the text above
+#                   the table links to dq_gate_log and to the quarantine table.
 #   dq_failure_alert_platinum  Platinum, unchanged for now (emails only when something failed).
 # The alerts' own schedules are paused: the job evaluates them after every run.
 #
@@ -20,8 +18,11 @@ resources:
       display_name: "[${bundle.target}] E2E - DQ summary, Silver and Gold"
       custom_summary: "DQ summary for the latest Silver and Gold run"
       custom_description: |
-        DQ summary for the latest Silver and Gold pipeline run (one row per layer and entity, from dq_gate_log).
-        Table: ${workspace.host}/explore/data/${var.catalog}/${var.audit_schema}/dq_gate_log
+        DQ summary for the latest Silver and Gold pipeline run: one row per layer and entity, from dq_gate_log.
+
+        Summary table (all runs):  ${workspace.host}/explore/data/${var.catalog}/${var.audit_schema}/dq_gate_log
+        Quarantined records:       ${workspace.host}/explore/data/${var.catalog}/${var.formatted_exception_schema}/orders_quarantine
+        (in the quarantine table, filter on _dq_run_ts for the run time shown below)
 
         {{QUERY_RESULT_TABLE}}
 
@@ -29,8 +30,8 @@ resources:
         - user_name: ${workspace.current_user.userName}
           level: CAN_MANAGE
 
-      # Real columns. A run with no Silver/Gold gate result still returns one row that says so,
-      # so an email is sent after every run.
+      # Short columns so the email table does not wrap words. A run with no Silver/Gold gate result still
+      # returns one row saying so, so an email is sent after every run.
       query_text: |
         WITH latest AS (
           SELECT run_id, job_id
@@ -40,76 +41,27 @@ resources:
           ORDER BY event_timestamp DESC
           LIMIT 1
         )
-        SELECT Layer, Entity, `Rows checked`, Passed, Quarantined, Status, `Failed rules`, `Job run id`
+        SELECT Layer, Entity, `Run (UTC)`, Checked, Passed, Quarantined, `Failed rules`
         FROM (
           SELECT 0 AS ord, g.event_timestamp AS ts,
                  INITCAP(g.layer) AS Layer,
                  g.entity AS Entity,
-                 g.rows_checked AS `Rows checked`,
+                 DATE_FORMAT(g.event_timestamp, 'HH:mm') AS `Run (UTC)`,
+                 g.rows_checked AS Checked,
                  g.rows_passed AS Passed,
                  g.rows_quarantined AS Quarantined,
-                 CASE WHEN g.rows_quarantined = 0 THEN 'All checks passed'
-                      ELSE CONCAT(CAST(g.rows_quarantined AS STRING), ' rows quarantined') END AS Status,
-                 COALESCE(ARRAY_JOIN(TRANSFORM(MAP_ENTRIES(g.failed_rules),
-                          r -> CONCAT(r.key, ' (', CAST(r.value AS STRING), ')')), ', '), '-') AS `Failed rules`,
-                 g.run_id AS `Job run id`
+                 CASE WHEN g.rows_quarantined = 0 THEN 'None - all checks passed'
+                      ELSE ARRAY_JOIN(TRANSFORM(MAP_ENTRIES(g.failed_rules),
+                           r -> CONCAT(r.key, ': ', CAST(r.value AS STRING))), ', ') END AS `Failed rules`
           FROM `${var.catalog}`.`${var.audit_schema}`.`dq_gate_log` g
           JOIN latest l ON g.run_id = l.run_id AND g.job_id = l.job_id
           WHERE g.layer IN ('silver', 'gold')
           UNION ALL
-          SELECT 1, CAST(NULL AS TIMESTAMP), '-', '-', CAST(NULL AS BIGINT), CAST(NULL AS BIGINT), CAST(NULL AS BIGINT),
-                 'No Silver or Gold DQ gate result was logged in the last 30 minutes', '-', '-'
+          SELECT 1, CAST(NULL AS TIMESTAMP), '-', '-', '-', CAST(NULL AS BIGINT), CAST(NULL AS BIGINT), CAST(NULL AS BIGINT),
+                 'No Silver or Gold DQ gate result was logged in the last 30 minutes'
           WHERE NOT EXISTS (SELECT 1 FROM latest)
         )
         ORDER BY ord, ts
-
-      warehouse_id: ${var.warehouse_id}
-
-      evaluation:
-        comparison_operator: "IS_NOT_NULL"
-        source:
-          name: "Status"
-          display: "Status"
-        empty_result_state: "OK"
-        notification:
-          notify_on_ok: false
-          retrigger_seconds: 1
-          subscriptions:
-            - user_email: ${workspace.current_user.userName}
-
-      schedule:
-        pause_status: "PAUSED"
-        quartz_cron_schedule: "0 */30 * * * ?"
-        timezone_id: "UTC"
-
-    dq_run_records:
-      display_name: "[${bundle.target}] E2E - DQ quarantined records, Silver"
-      custom_summary: "Quarantined Silver records of the latest run"
-      custom_description: |
-        Silver records quarantined in the latest pipeline run, with the rules they failed.
-        Table: ${workspace.host}/explore/data/${var.catalog}/${var.formatted_exception_schema}/orders_quarantine
-
-        {{QUERY_RESULT_TABLE}}
-
-      permissions:
-        - user_name: ${workspace.current_user.userName}
-          level: CAN_MANAGE
-
-      # Sent only when that run quarantined Silver records. Gold has no quarantine table yet.
-      query_text: |
-        WITH latest AS (
-          SELECT run_id, job_id
-          FROM `${var.catalog}`.`${var.audit_schema}`.`dq_gate_log`
-          WHERE layer IN ('silver', 'gold')
-            AND event_timestamp >= current_timestamp() - INTERVAL 30 MINUTES
-          ORDER BY event_timestamp DESC
-          LIMIT 1
-        )
-        SELECT 'Silver' AS Layer, q.order_id, q.customer_name, q.status, q.amount,
-               COALESCE(ARRAY_JOIN(TRANSFORM(q._errors, e -> e.name), ', '), 'unknown') AS `Failed rules`
-        FROM `${var.catalog}`.`${var.formatted_exception_schema}`.`orders_quarantine` q
-        JOIN latest l ON q._dq_job_run_id = l.run_id AND q._dq_job_id = l.job_id
-        ORDER BY q.order_id
 
       warehouse_id: ${var.warehouse_id}
 
