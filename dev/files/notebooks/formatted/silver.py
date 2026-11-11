@@ -301,6 +301,7 @@ def _bootstrap_silver_table(
             quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
             label="bootstrap (Bronze)",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "silver", f"{catalog}.{schemas['silver']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Silver", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules for '{entity}' in bronze_to_silver.yml — skipping DQ gate")
@@ -390,6 +391,7 @@ def _incremental_silver_merge(
             quarantine_fqn=f"{catalog}.{schemas['formatted_exception']}.{entity}_quarantine",
             label="incremental (Bronze CDF)",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "silver", f"{catalog}.{schemas['silver']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Silver", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules for '{entity}' in bronze_to_silver.yml — skipping DQ gate")

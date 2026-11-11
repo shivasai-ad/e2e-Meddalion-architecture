@@ -78,6 +78,7 @@ def quality_gate(
     quarantine_fqn: str,
     label: str,
     gate_log=None,
+    notify: Optional[Dict] = None,
 ) -> DataFrame:
     """Run checks on df. Returns the rows that passed every check.
 
@@ -106,6 +107,7 @@ def quality_gate(
         print(f"   ✓ DQ passed for [{label}]\n")
         if gate_log:
             gate_log.log(entity, label, n_good, n_good, 0, {})
+        _notify(spark, entity, label, n_good, n_bad, {}, bad_df, quarantine_fqn, notify)
         return good_df
 
     # Rows failed per rule: DQX keeps the failed checks of each bad row in `_errors`
@@ -130,4 +132,22 @@ def quality_gate(
     print(f"   → {n_good} row(s) continue to the target\n")
     if gate_log:
         gate_log.log(entity, label, n_good + n_bad, n_good, n_bad, failed_rules, quarantine_fqn)
+    _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantine_fqn, notify)
     return good_df
+
+
+def _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantine_fqn, notify):
+    """Send the run email when the caller asked for one. Never stops the data run."""
+    if not notify:
+        return
+    from . import dq_email
+    try:
+        dq_email.notify_gate(
+            spark, notify["dbutils"], layer=notify["layer"], entity=entity, label=label,
+            job_id=job_value(spark, "spark.databricks.job.id", "job_id"),
+            run_id=job_value(spark, "spark.databricks.job.runId", "job_run_id"),
+            n_good=n_good, n_bad=n_bad, failed_rules=failed_rules,
+            bad_df=bad_df, quarantine_fqn=quarantine_fqn,
+        )
+    except Exception as e:
+        print(f"DQ email skipped ({type(e).__name__}): {str(e)[:200]}")

@@ -63,25 +63,6 @@ resources:
             source: WORKSPACE
           environment_key: serverless_env
 
-        - task_key: quarantine_latest_run_views
-          depends_on:
-            - task_key: gold_aggregate
-          run_if: ALL_DONE            # also after a failed task, so the link still shows that run
-          notebook_task:
-            notebook_path: ${workspace.file_path}/notebooks/published/quarantine_latest_run_views
-            source: WORKSPACE
-          environment_key: serverless_env
-
-        - task_key: dq_summary_email
-          depends_on:
-            - task_key: quarantine_latest_run_views
-          run_if: ALL_DONE            # also after a failed task
-          alert_task:
-            alert_id: ${resources.alerts.dq_run_summary.id}
-            warehouse_id: ${var.warehouse_id}
-            subscribers:
-              - user_name: ${workspace.current_user.userName}
-
       queue:
         enabled: true
 

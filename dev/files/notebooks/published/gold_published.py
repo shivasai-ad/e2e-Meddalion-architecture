@@ -387,6 +387,7 @@ def _bootstrap_gold_table(
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="bootstrap (Silver)",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Gold", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")
@@ -577,6 +578,7 @@ def _incremental_gold_merge(
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="incremental (Silver CDF)",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Gold", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")
@@ -716,6 +718,7 @@ def process_derived_gold_table(spark, catalog: str, entity: str, schemas: Dict) 
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label=f"derived ({cfg['kind']})",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Gold", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules for '{entity}' in silver_to_gold.yml — skipping DQ gate")
