@@ -52,7 +52,6 @@ def build_html(layer: str, run_id: str, run_time: str, summary: Dict, records: L
     status = "All checks passed" if summary["quarantined"] == 0 else f'{summary["quarantined"]} record(s) rejected'
     parts = [
         '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937">',
-        f'<p style="font-size:16px"><b>{_cell(layer)} run {_cell(run_id)}</b> at {_cell(run_time)} UTC: {_cell(status)}.</p>',
         "<h3 style=\"margin:16px 0 6px\">Summary</h3>",
         _table(["Layer", "Entity", "Checked", "Passed", "Rejected", "What was wrong", "Run ID"],
                [[layer, summary["entity"], summary["checked"], summary["passed"], summary["quarantined"], failed, run_id]]),
