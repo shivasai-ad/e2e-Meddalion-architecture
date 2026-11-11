@@ -107,22 +107,8 @@ def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: 
     subject = f"[{EMAIL['environment']}] {layer} DQ run result for run {run_id} (job {job_label})"
     summary = {"entity": entity, "checked": n_good + n_bad, "passed": n_good, "quarantined": n_bad,
                "failed_rules": failed_rules}
-    records, columns = [], []
-    if n_bad and bad_df is not None:
-        columns = [c for c in bad_df.columns if not c.startswith(INTERNAL_PREFIXES) and c != "_errors"]
-        rows = bad_df.limit(MAX_RECORDS).collect()
-        for r in rows:
-            d = r.asDict(recursive=True)
-            errors = d.get("_errors") or []
-            d["Column"] = ", ".join(sorted({c for e in errors for c in (e.get("columns") or [])}))
-            d["Problem"] = "; ".join(e.get("message") or e.get("name") or "" for e in errors)
-            records.append(d)
-        columns = columns + ["Column", "Problem"]
+    records, columns = [], []  # the email carries the summary only; the records are in the quarantine table
     body = build_html(layer, run_id, run_time, summary, records, columns or ["Problem"], {})
-    if n_bad > MAX_RECORDS and quarantine_fqn:
-        body += (f'<p>Showing the first {MAX_RECORDS} of {n_bad} rejected records. '
-                 f"The rest are in the quarantine table <b>{html.escape(quarantine_fqn)}</b>, "
-                 f"filter on run id {html.escape(run_id)}.</p>")
     base = EMAIL["workspace_url"].rstrip("/") + "/explore/data/"
     links = []
     if gate_log_fqn:
@@ -130,6 +116,9 @@ def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: 
     if quarantine_fqn:
         links.append(f'<a href="{base}{quarantine_fqn.replace(".", "/")}">Quarantine table</a>')
     link_line = f'<p style="font-size:14px">{" | ".join(links)}</p>' if links else ""
+    if n_bad and quarantine_fqn:
+        link_line += (f'<p style="font-size:14px">To see this run\'s rejected records, open the quarantine table '
+                      f'and filter <b>_dq_job_run_id = {html.escape(run_id)}</b>.</p>')
     intro = (f'<p style="font-size:14px"><b>{html.escape(layer)} DQ run result</b>, job {html.escape(job_label)}, run {html.escape(run_id)}: '
              + ("all checks passed." if n_bad == 0 else f"{n_bad} of {n_good + n_bad} record(s) rejected.") + "</p>" + link_line)
     body = intro + body
