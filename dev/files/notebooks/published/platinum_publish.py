@@ -148,6 +148,7 @@ else:
                         spark, TARGET_CATALOG, AUDIT_SCHEMA, "platinum", target_fqn, False, None
                     ),
                     treat=treats[p.table],
+                    notify={"layer": "Platinum", "dbutils": dbutils},
                 )
                 log_ctx.set_count(n)
             print(f"  published {target_fqn} as a {PUBLISH_AS}: {n} row(s), {len(p.kept)} column(s)")

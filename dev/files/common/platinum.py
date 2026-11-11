@@ -190,7 +190,7 @@ def checked_columns(checks: List[dict]) -> set:
 def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
                   source_columns: List[dict], source_table_tags: Dict[str, str],
                   checks: List[dict], quarantine_fqn: str, gate_log=None,
-                  treat: Optional[Dict[str, str]] = None) -> int:
+                  treat: Optional[Dict[str, str]] = None, notify: Optional[Dict] = None) -> int:
     """Rebuild one Platinum table from Gold and copy its tags. Returns the row count.
 
     One DQ gate, after the column handling (allowed columns kept, masks applied, `treat` columns
@@ -215,6 +215,7 @@ def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
     out = spark.table(source_fqn).selectExpr(*[select_expr(c, treat) for c in plan.kept])
     good = dq.quality_gate(
         spark, plan.table, out, checks, quarantine_fqn, "gold_to_platinum", gate_log=gate_log,
+        notify=None if notify is None else {**notify, "gate_log_fqn": getattr(gate_log, "fqn", None)},
     )
     if good.isEmpty():
         raise ValueError(f"No row of {source_fqn} passed the DQ gate; {target_fqn} was left unchanged.")
@@ -286,7 +287,7 @@ def _validate_for_publish(plan: TablePlan, treat: Dict[str, str], checks: List[d
 def publish_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
                  source_columns: List[dict], source_table_tags: Dict[str, str],
                  checks: List[dict], quarantine_fqn: str, gate_log=None,
-                 treat: Optional[Dict[str, str]] = None) -> int:
+                 treat: Optional[Dict[str, str]] = None, notify: Optional[Dict] = None) -> int:
     """Create or replace the Platinum view and the quarantine view. Returns the rows the view exposes.
 
     The view is `SELECT <kept columns, masks applied> FROM <gold> WHERE <every rule passes>`. The rules
@@ -314,6 +315,17 @@ def publish_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
     failed_rules = {name: int(counts[f"r{i}"] or 0) for i, (name, _) in enumerate(conds) if counts[f"r{i}"]}
     if gate_log:
         gate_log.log(plan.table, "gold_to_platinum", total, passed, bad, failed_rules, quarantine_fqn)
+        if notify is not None:
+            from . import dq_email
+            try:
+                dq_email.notify_gate(
+                    spark, notify["dbutils"], layer=notify["layer"], entity=plan.table, label="gold_to_platinum",
+                    job_id=None, run_id=job_value_run(spark), n_good=passed, n_bad=bad, failed_rules=failed_rules,
+                    bad_df=None, quarantine_fqn=quarantine_fqn, gate_log_fqn=getattr(gate_log, "fqn", None),
+                    notify_team=notify.get("team"),
+                )
+            except Exception as e:
+                print(f"DQ email skipped ({type(e).__name__}): {str(e)[:200]}")
     if passed == 0:
         raise ValueError(f"No row of {source_fqn} passes the DQ rules; {target_fqn} was left unchanged.")
 
@@ -340,3 +352,9 @@ def publish_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
                 f"SET TAGS ('{SENSITIVITY_TAG}' = '{_esc(col.sensitivity)}')"
             )
     return passed
+
+
+def job_value_run(spark):
+    """The job run id for the email subject, or None when not running as a job."""
+    from .job_context import job_value
+    return job_value(spark, "spark.databricks.job.runId", "job_run_id")
