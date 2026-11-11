@@ -107,7 +107,7 @@ def quality_gate(
         print(f"   ✓ DQ passed for [{label}]\n")
         if gate_log:
             gate_log.log(entity, label, n_good, n_good, 0, {})
-        _notify(spark, entity, label, n_good, n_bad, {}, bad_df, quarantine_fqn, notify)
+        _notify(spark, entity, label, n_good, n_bad, {}, bad_df, quarantine_fqn, _with_log(notify, gate_log))
         return good_df
 
     # Rows failed per rule: DQX keeps the failed checks of each bad row in `_errors`
@@ -132,8 +132,15 @@ def quality_gate(
     print(f"   → {n_good} row(s) continue to the target\n")
     if gate_log:
         gate_log.log(entity, label, n_good + n_bad, n_good, n_bad, failed_rules, quarantine_fqn)
-    _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantine_fqn, notify)
+    _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantine_fqn, _with_log(notify, gate_log))
     return good_df
+
+
+def _with_log(notify, gate_log):
+    """Add the gate log's table name to the notify settings, for the email's summary link."""
+    if not notify:
+        return notify
+    return {**notify, "gate_log_fqn": getattr(gate_log, "fqn", None)}
 
 
 def _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantine_fqn, notify):
@@ -144,6 +151,7 @@ def _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantin
     try:
         dq_email.notify_gate(
             spark, notify["dbutils"], layer=notify["layer"], entity=entity, label=label,
+            gate_log_fqn=notify.get("gate_log_fqn"),
             job_id=job_value(spark, "spark.databricks.job.id", "job_id"),
             run_id=job_value(spark, "spark.databricks.job.runId", "job_run_id"),
             n_good=n_good, n_bad=n_bad, failed_rules=failed_rules,
