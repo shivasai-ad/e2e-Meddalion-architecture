@@ -19,7 +19,7 @@ MAX_RECORDS = 50
 EMAIL = {
     "enabled": True,
     "environment": "dev",
-    "team": "openfga",           # default team when a notebook does not name one
+    "team": "rls_testing",       # default team when a notebook does not name one
     "scope": "dq-alerts",
     "host": "de-smtp-outbound-1.mimecast.com",
     "port": 587,
@@ -31,6 +31,7 @@ EMAIL = {
 # To add a squad: add an entry here and pass team="<key>" in its gate's notify settings.
 TEAMS = {
     "openfga": {"name": "OpenFGA", "recipients": ["shiva.sai@alterdomus.com"]},
+    "rls_testing": {"name": "RLS Testing", "recipients": ["shiva.sai@alterdomus.com"]},
 }
 
 INTERNAL_PREFIXES = ("_",)  # quarantine bookkeeping columns, not shown in the email
