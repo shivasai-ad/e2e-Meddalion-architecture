@@ -151,7 +151,7 @@ def _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantin
     try:
         dq_email.notify_gate(
             spark, notify["dbutils"], layer=notify["layer"], entity=entity, label=label,
-            gate_log_fqn=notify.get("gate_log_fqn"),
+            gate_log_fqn=notify.get("gate_log_fqn"), notify_team=notify.get("team"),
             job_id=job_value(spark, "spark.databricks.job.id", "job_id"),
             run_id=job_value(spark, "spark.databricks.job.runId", "job_run_id"),
             n_good=n_good, n_bad=n_bad, failed_rules=failed_rules,

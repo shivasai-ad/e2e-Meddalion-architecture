@@ -19,12 +19,18 @@ MAX_RECORDS = 50
 EMAIL = {
     "enabled": True,
     "environment": "dev",
+    "team": "openfga",           # default team when a notebook does not name one
     "scope": "dq-alerts",
     "host": "de-smtp-outbound-1.mimecast.com",
     "port": 587,
-    "workspace_url": "https://dbc-445a81b8-2855.cloud.databricks.com",
     "sender": "dp-ops-reports@alterdomus.com",
-    "recipients": ["shiva.sai@alterdomus.com"],
+    "workspace_url": "https://dbc-445a81b8-2855.cloud.databricks.com",
+}
+
+# One entry per squad. A squad gets the same email template, with its own name and recipients.
+# To add a squad: add an entry here and pass team="<key>" in its gate's notify settings.
+TEAMS = {
+    "openfga": {"name": "OpenFGA", "recipients": ["shiva.sai@alterdomus.com"]},
 }
 
 INTERNAL_PREFIXES = ("_",)  # quarantine bookkeeping columns, not shown in the email
@@ -99,12 +105,14 @@ def send(spark_secrets, *, enabled: bool, scope: str, host: str, port: int, send
 def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: Optional[str],
                 run_id: Optional[str], n_good: int, n_bad: int, failed_rules: Dict[str, int],
                 bad_df=None, quarantine_fqn: Optional[str] = None,
-                gate_log_fqn: Optional[str] = None) -> bool:
+                gate_log_fqn: Optional[str] = None, notify_team: Optional[str] = None) -> bool:
     """One email for one gate run: the summary, then the rejected records of this run (up to MAX_RECORDS)."""
     run_id = run_id or "unknown"
     run_time = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d %H:%M")
     job_label = job_id or "unknown"
-    subject = f"[{EMAIL['environment']}] {layer} DQ run result for run {run_id} (job {job_label})"
+    team_key = notify_team or EMAIL["team"]
+    team = TEAMS.get(team_key) or {"name": team_key, "recipients": []}
+    subject = f"[{EMAIL['environment']}] {team['name']} {layer} DQ run result for run {run_id} (job {job_label})"
     summary = {"entity": entity, "checked": n_good + n_bad, "passed": n_good, "quarantined": n_bad,
                "failed_rules": failed_rules}
     records, columns = [], []  # the email carries the summary only; the records are in the quarantine table
@@ -122,7 +130,7 @@ def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: 
     intro = (f'<p style="font-size:14px"><b>{html.escape(layer)} DQ run result</b>, job {html.escape(job_label)}, run {html.escape(run_id)}: '
              + ("all checks passed." if n_bad == 0 else f"{n_bad} of {n_good + n_bad} record(s) rejected.") + "</p>" + link_line)
     body = intro + body
-    text = f"{layer} DQ run {run_id}: {n_bad} of {n_good + n_bad} rejected."
+    text = f"{team['name']} {layer} DQ run {run_id}: {n_bad} of {n_good + n_bad} rejected."
     return send(dbutils.secrets, enabled=EMAIL["enabled"], scope=EMAIL["scope"], host=EMAIL["host"],
-                port=EMAIL["port"], sender=EMAIL["sender"], recipients=EMAIL["recipients"],
+                port=EMAIL["port"], sender=EMAIL["sender"], recipients=team["recipients"],
                 subject=subject, html_body=body, text_body=text)
