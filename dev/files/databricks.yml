@@ -58,6 +58,12 @@ variables:
   published_exception_schema:
     description: Gold quarantine schema, linked from the DQ summary email (config_loader SCHEMAS['published_exception']).
     default: e2e_medallion_metadata_v2_published_exception
+  team_name:
+    description: Squad key for the DQ run emails (a key in TEAMS in common/dq_email.py).
+    default: rls_testing
+  environment:
+    description: Environment label in the email subject (dev, sim, prd). Set per target below.
+    default: dev
   warehouse_id:
     description: SQL warehouse the DQ failure alert runs its query on. Set per target below.
 

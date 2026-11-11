@@ -57,7 +57,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, cdf, audit_log, control, schema_audit, dq, dq_gate_log, job_context
+from common import ddl, cdf, audit_log, control, schema_audit, dq, dq_gate_log, job_context, dq_email
 
 # COMMAND ----------
 
@@ -67,6 +67,9 @@ ENTITY = dbutils.widgets.get("entity").strip()
 for _name in ("job_id", "job_run_id", "task_run_id", "task_key"):
     dbutils.widgets.text(_name, "")  # set by the job (base_parameters), for the audit logs
 job_context.set_from_widgets(dbutils)
+dbutils.widgets.text("environment", "dev", label="Environment (email subject)")
+dbutils.widgets.text("team_name", "rls_testing", label="Squad key (email)")
+dq_email.configure(dbutils.widgets.get("environment").strip(), dbutils.widgets.get("team_name").strip())
 
 # Constants
 CATALOG = get_catalog()

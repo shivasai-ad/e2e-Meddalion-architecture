@@ -34,6 +34,14 @@ TEAMS = {
     "rls_testing": {"name": "RLS Testing", "recipients": ["shiva.sai@alterdomus.com"]},
 }
 
+def configure(environment: str, team_key: str) -> None:
+    """Set the environment label and the default squad for this run's emails (from the bundle variables)."""
+    if environment:
+        EMAIL["environment"] = environment
+    if team_key:
+        EMAIL["team"] = team_key
+
+
 INTERNAL_PREFIXES = ("_",)  # quarantine bookkeeping columns, not shown in the email
 
 

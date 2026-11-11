@@ -30,6 +30,8 @@ resources:
           notebook_task:
             notebook_path: ${workspace.file_path}/notebooks/published/platinum_publish
             base_parameters:
+              environment: ${var.environment}
+              team_name: ${var.team_name}
               source_catalog: ${var.gold_source_catalog}
               source_schema: ${var.gold_source_schema}
               target_catalog: ${var.platinum_catalog}

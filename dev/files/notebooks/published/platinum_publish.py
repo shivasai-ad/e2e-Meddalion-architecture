@@ -39,7 +39,7 @@ import sys
 PROJECT_ROOT = os.path.abspath("../..")
 sys.path.append(PROJECT_ROOT)
 
-from common import audit_log, dq, dq_gate_log, job_context, platinum
+from common import audit_log, dq, dq_gate_log, job_context, platinum, dq_email
 
 # COMMAND ----------
 
@@ -53,6 +53,9 @@ dbutils.widgets.text("publish_as", "table", label="Publish as (table or view)")
 for _name in ("job_id", "job_run_id", "task_run_id", "task_key"):
     dbutils.widgets.text(_name, "")  # set by the job (base_parameters), for the audit log
 job_context.set_from_widgets(dbutils)
+dbutils.widgets.text("environment", "dev", label="Environment (email subject)")
+dbutils.widgets.text("team_name", "rls_testing", label="Squad key (email)")
+dq_email.configure(dbutils.widgets.get("environment").strip(), dbutils.widgets.get("team_name").strip())
 
 SOURCE_CATALOG = dbutils.widgets.get("source_catalog").strip()
 SOURCE_SCHEMA = dbutils.widgets.get("source_schema").strip()
