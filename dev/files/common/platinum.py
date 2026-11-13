@@ -23,6 +23,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 TABLE_GATE_TAG = "table_type"
+# Gold tags that are not copied to Platinum: the gate tag itself, and the hash written by the older
+# gold-metadata-Standards-testing pipeline, which Platinum does not use.
+NOT_COPIED_TAGS = {TABLE_GATE_TAG, "_compliance_config_hash"}
 TABLE_GATE_VALUE = "platinum"
 SENSITIVITY_TAG = "sensitivity"
 PII_TAG = "pii"
@@ -222,7 +225,7 @@ def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
     good.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_fqn)
 
     # Table tags: carry the Gold tags over, but not the gate tag itself, and record provenance.
-    tags = {k: v for k, v in source_table_tags.items() if k != TABLE_GATE_TAG}
+    tags = {k: v for k, v in source_table_tags.items() if k not in NOT_COPIED_TAGS}
     tags["promoted_from"] = source_fqn
     pairs = ", ".join(f"'{_esc(k)}' = '{_esc(str(v))}'" for k, v in tags.items())
     spark.sql(f"ALTER TABLE {target_fqn} SET TAGS ({pairs})")
@@ -338,7 +341,7 @@ def publish_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
     )
 
     # Tags and comments on the view (a view does not inherit them from Gold).
-    tags = {k: v for k, v in source_table_tags.items() if k != TABLE_GATE_TAG}
+    tags = {k: v for k, v in source_table_tags.items() if k not in NOT_COPIED_TAGS}
     tags["promoted_from"] = source_fqn
     pairs = ", ".join(f"'{_esc(k)}' = '{_esc(str(v))}'" for k, v in tags.items())
     spark.sql(f"ALTER VIEW {target_fqn} SET TAGS ({pairs})")
