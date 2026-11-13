@@ -25,6 +25,7 @@ EMAIL = {
     "port": 587,
     "sender": "dp-ops-reports@alterdomus.com",
     "workspace_url": "https://dbc-445a81b8-2855.cloud.databricks.com",
+    "signature": "Data Platform Team",
 }
 
 # One entry per squad. A squad gets the same email template, with its own name and recipients.
@@ -127,19 +128,30 @@ def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: 
     records, columns = [], []  # the email carries the summary only; the records are in the quarantine table
     body = build_html(layer, run_id, run_time, summary, records, columns or ["Problem"], {})
     base = EMAIL["workspace_url"].rstrip("/") + "/explore/data/"
-    links = []
-    if gate_log_fqn:
-        links.append(f'<a href="{base}{gate_log_fqn.replace(".", "/")}">Summary table (dq_gate_log)</a>')
-    if quarantine_fqn:
-        links.append(f'<a href="{base}{quarantine_fqn.replace(".", "/")}">Quarantine table</a>')
-    link_line = f'<p style="font-size:14px">{" | ".join(links)}</p>' if links else ""
+    result = "all checks passed." if n_bad == 0 else f"{n_bad} of {n_good + n_bad} record(s) rejected."
+    intro = (f'<p style="font-size:14px"><b>{html.escape(layer)} DQ run result</b>, job {html.escape(job_label)}, '
+             f'run {html.escape(run_id)}: {result}</p>')
+
+    # 1) summary first, 2) then, when records were rejected, how to see them and a big link to the quarantine table
+    detail, detail_text = "", ""
     if n_bad and quarantine_fqn:
-        link_line += (f'<p style="font-size:14px">To see this run\'s rejected records, open the quarantine table '
-                      f'and filter <b>_dq_job_run_id = {html.escape(run_id)}</b>.</p>')
-    intro = (f'<p style="font-size:14px"><b>{html.escape(layer)} DQ run result</b>, job {html.escape(job_label)}, run {html.escape(run_id)}: '
-             + ("all checks passed." if n_bad == 0 else f"{n_bad} of {n_good + n_bad} record(s) rejected.") + "</p>" + link_line)
-    body = intro + body
-    text = f"{team['name']} {layer} DQ run {run_id}: {n_bad} of {n_good + n_bad} rejected."
+        q_url = base + quarantine_fqn.replace(".", "/")
+        detail = (f'<p style="font-size:14px">If you want to see more detail, open the quarantine table and filter '
+                  f'<b>_dq_job_run_id = {html.escape(run_id)}</b>.</p>'
+                  f'<p style="font-size:20px;font-weight:bold;margin:8px 0 16px"><a href="{q_url}">'
+                  f'Open the {html.escape(layer)} quarantine table</a></p>')
+        detail_text = (f"\nIf you want to see more detail, open the quarantine table and filter "
+                       f"_dq_job_run_id = {run_id}:\n{q_url}\n")
+    history = ""
+    if gate_log_fqn:
+        history = (f'<p style="font-size:12px;color:#6b7280">Summary of all runs: '
+                   f'<a href="{base}{gate_log_fqn.replace(".", "/")}">dq_gate_log</a></p>')
+    signoff = f'<p style="font-size:14px">Thanks and regards,<br>{html.escape(EMAIL["signature"])}</p>'
+
+    body = intro + body + detail + history + signoff
+    text = (f"{layer} DQ run result, job {job_label}, run {run_id}: {result}\n"
+            f"Checked {n_good + n_bad}, passed {n_good}, rejected {n_bad}.\n{detail_text}\n"
+            f"Thanks and regards,\n{EMAIL['signature']}")
     return send(dbutils.secrets, enabled=EMAIL["enabled"], scope=EMAIL["scope"], host=EMAIL["host"],
                 port=EMAIL["port"], sender=EMAIL["sender"], recipients=team["recipients"],
                 subject=subject, html_body=body, text_body=text)
