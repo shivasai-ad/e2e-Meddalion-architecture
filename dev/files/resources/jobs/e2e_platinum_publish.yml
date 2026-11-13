@@ -1,9 +1,11 @@
-# Platinum publish: Gold -> Platinum (ADP-1026)
+# Platinum publish: Gold -> Platinum views (ADP-1026)
 #
 # Platform-owned and separate from the squad's Bronze -> Silver -> Gold job
 # (e2e_medallion_pipeline). Run it after Gold has finished. It reads the tags on the
-# Gold tables, promotes the ones tagged table_type=platinum, and keeps only the columns
-# their sensitivity allows. See notebooks/published/platinum_publish.py.
+# Gold tables, gives each table tagged table_type=platinum a view, and puts only the columns
+# their sensitivity allows in it. The first run creates the view; later runs compare the
+# metadata_hash tag of the Gold table with the view's and rebuild only when it changed.
+# No DQ, no data filter. See notebooks/published/platinum_publish.py.
 #
 # Target catalog/schema come from databricks.yml variables. To move to the dedicated
 # Platinum catalog later: --var platinum_catalog=<new catalog>
@@ -15,30 +17,25 @@ resources:
   jobs:
     e2e_platinum_publish:
       name: "E2E Platinum Publish"
-      description: "Gold -> Platinum: promote tagged Gold tables, keep only columns their sensitivity allows"
+      description: "Gold -> Platinum: a view per tagged Gold table, only the columns their sensitivity allows"
 
       parameters:
         - name: entity
           default: "ALL"
         - name: dry_run
           default: "false"
-        - name: publish_as
-          default: "table"
 
       tasks:
         - task_key: platinum_publish
           notebook_task:
             notebook_path: ${workspace.file_path}/notebooks/published/platinum_publish
             base_parameters:
-              environment: ${var.environment}
-              team_name: ${var.team_name}
               source_catalog: ${var.gold_source_catalog}
               source_schema: ${var.gold_source_schema}
               target_catalog: ${var.platinum_catalog}
               target_schema: ${var.platinum_schema}
               entity: "{{job.parameters.entity}}"
               dry_run: "{{job.parameters.dry_run}}"
-              publish_as: "{{job.parameters.publish_as}}"
               job_id: "{{job.id}}"
               job_run_id: "{{job.run_id}}"
               task_run_id: "{{task.run_id}}"
@@ -53,7 +50,5 @@ resources:
         - environment_key: serverless_env
           spec:
             environment_version: "4"
-            dependencies:
-              - databricks-labs-dqx==0.16.0
 
       performance_target: PERFORMANCE_OPTIMIZED

@@ -1,39 +1,47 @@
-"""Platinum publish -- Gold -> Platinum, driven by the tags already on the Gold tables.
+"""Platinum publish -- a view over each tagged Gold table, driven by the tags on the Gold tables.
 
-Platinum is the customer-facing layer (ADP-1026): a platform-owned subset of Gold.
-Two tag-based decisions, nothing else:
+Platinum is the customer-facing layer (ADP-1026): a platform-owned subset of Gold. There is no data
+filtering and no DQ here. Two tag-based decisions, nothing else:
 
   1. Table gate:   a Gold table is promoted only if its `table_type` tag is `platinum`
                    (set from `table_type: platinum` in gold_compliance_metadata.yml).
-  2. Column rule:  each column's `sensitivity` tag decides what reaches Platinum,
-                   following the "client, own legal entity" column of the access matrix.
+  2. Column rule:  each column's `sensitivity` tag decides whether the column is in the view.
 
-        public        -> copied as is
-        confidential  -> copied as is
+        public        -> in the view
+        confidential  -> in the view
         internal      -> left out (a client never sees it)
-        restricted    -> last 4 characters only ('****' + last 4), as a STRING
-        no tag        -> left out (default-deny; the PR check should make this impossible)
+        restricted    -> left out (not exposed; no masking rule is agreed yet)
+        no tag        -> left out (default-deny)
         pii = 'true'  -> left out (held back until someone signs it off)
 
-The module has no Spark import at the top, so `decide_column` and `build_plan` can be
-tested without a cluster. Spark is used only by the functions that read tags or write.
+The view is `SELECT <kept columns> FROM <gold table>`: every row of Gold, live. It is created the first
+time. On every later run the job compares the `metadata_hash` tag of the Gold table with the one on the
+Platinum view; when they differ it rebuilds the view and copies the tags again, and when they match it
+does nothing.
+
+The module has no Spark import at the top, so `decide_column` and `build_plan` can be tested without a
+cluster. Spark is used only by the functions that read tags or write.
 """
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 TABLE_GATE_TAG = "table_type"
-# Gold tags that are not copied to Platinum: the gate tag itself, and the hash written by the older
-# gold-metadata-Standards-testing pipeline, which Platinum does not use.
-NOT_COPIED_TAGS = {TABLE_GATE_TAG, "_compliance_config_hash"}
 TABLE_GATE_VALUE = "platinum"
 SENSITIVITY_TAG = "sensitivity"
 PII_TAG = "pii"
+HASH_TAG = "metadata_hash"
+
+# Gold tags that are not copied to Platinum: the gate tag itself, and the hash written by the older
+# gold-metadata-Standards-testing pipeline, which Platinum does not use.
+NOT_COPIED_TAGS = {TABLE_GATE_TAG, "_compliance_config_hash"}
 
 INCLUDE = "include"
 OMIT = "omit"
-LAST4 = "last4"
-FORCE_NULL = "null"
+
+CREATE = "create"
+UPDATE = "update"
+UNCHANGED = "unchanged"
 
 
 def decide_column(sensitivity: Optional[str], pii: Optional[str] = None) -> tuple:
@@ -48,7 +56,7 @@ def decide_column(sensitivity: Optional[str], pii: Optional[str] = None) -> tupl
     if sensitivity == "internal":
         return OMIT, "internal is never exposed to clients"
     if sensitivity == "restricted":
-        return LAST4, "restricted: last 4 characters only"
+        return OMIT, "restricted is not exposed"
     return OMIT, f"unknown sensitivity '{sensitivity}'"
 
 
@@ -92,36 +100,22 @@ def build_plan(table: str, table_tags: Dict[str, str], columns: List[dict],
     return plan
 
 
-def load_treat(rules_file: str, table: str) -> Dict[str, str]:
-    """The `treat` map of one table in the rules file: {column: 'null'}. Empty if none.
+def view_sql(plan: TablePlan, source_fqn: str, target_fqn: str) -> str:
+    """The statement that creates or replaces the view: the kept columns, every row of Gold."""
+    select_list = ", ".join(f"`{c.name}`" for c in plan.kept)
+    return f"CREATE OR REPLACE VIEW {target_fqn} AS SELECT {select_list} FROM {source_fqn}"
 
-    `treat` can only make a kept column stricter (force it to NULL); it never lets a column out.
+
+def decide_action(view_exists: bool, gold_hash: Optional[str], view_hash: Optional[str]) -> str:
+    """What to do with one Platinum view: create it, rebuild it, or leave it.
+
+    No Gold hash means a change cannot be detected, so the view is rebuilt on every run.
     """
-    import yaml
-
-    with open(rules_file) as f:
-        entry = ((yaml.safe_load(f) or {}).get("tables") or {}).get(table) or {}
-    treat = entry.get("treat") or {}
-    bad = {c: v for c, v in treat.items() if v != FORCE_NULL}
-    if bad:
-        raise ValueError(f"'treat' for '{table}' in '{rules_file}' allows only '{FORCE_NULL}', got {bad}.")
-    return treat
-
-
-def select_expr(col: ColumnPlan, treat: Optional[Dict[str, str]] = None) -> str:
-    """One SELECT-list item for a kept column. `treat` can force a column to NULL."""
-    quoted = f"`{col.name}`"
-    if (treat or {}).get(col.name) == FORCE_NULL:
-        return f"CAST(NULL AS {col.data_type}) AS {quoted}"
-    if col.treatment == LAST4:
-        # A value of 4 characters or fewer would show in full, so it is masked completely.
-        text = f"cast({quoted} as string)"
-        return (
-            f"CASE WHEN {quoted} IS NULL THEN NULL "
-            f"WHEN length({text}) > 4 THEN concat('****', right({text}, 4)) "
-            f"ELSE '****' END AS {quoted}"
-        )
-    return quoted
+    if not view_exists:
+        return CREATE
+    if gold_hash and gold_hash == view_hash:
+        return UNCHANGED
+    return UPDATE
 
 
 # ── Spark-side helpers ─────────────────────────────────────────────────────
@@ -179,172 +173,44 @@ def plan_schema(spark, catalog: str, schema: str, only: Optional[str] = None) ->
     return plans
 
 
-def checked_columns(checks: List[dict]) -> set:
-    """Every column a DQX rule names, from `column` or `columns` in its arguments."""
-    names = set()
-    for rule in checks or []:
-        args = (rule.get("check") or {}).get("arguments") or {}
-        if isinstance(args.get("column"), str):
-            names.add(args["column"])
-        names.update(c for c in (args.get("columns") or []) if isinstance(c, str))
-    return names
+def view_exists(spark, target_fqn: str) -> bool:
+    return spark.catalog.tableExists(target_fqn)
 
 
-def publish_table(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
-                  source_columns: List[dict], source_table_tags: Dict[str, str],
-                  checks: List[dict], quarantine_fqn: str, gate_log=None,
-                  treat: Optional[Dict[str, str]] = None, notify: Optional[Dict] = None) -> int:
-    """Rebuild one Platinum table from Gold and copy its tags. Returns the row count.
+def view_action(spark, target_fqn: str, gold_tags: Dict[str, str]) -> str:
+    """Compare the Gold table's metadata hash with the Platinum view's, without writing anything."""
+    exists = view_exists(spark, target_fqn)
+    view_hash = None
+    if exists:
+        catalog, schema, table = target_fqn.split(".")
+        view_hash = read_table_tags(spark, catalog, schema, table).get(HASH_TAG)
+    return decide_action(exists, gold_tags.get(HASH_TAG), view_hash)
 
-    One DQ gate, after the column handling (allowed columns kept, masks applied, `treat` columns
-    forced to NULL). Rules may only use columns Platinum keeps; a rule naming any other column
-    fails the table before anything is written. Failing rows go to `quarantine_fqn`.
-    If no row passes, the existing Platinum table is left as it is.
+
+def apply_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
+               source_columns: List[dict], source_table_tags: Dict[str, str]) -> str:
+    """Create the Platinum view, rebuild it, or leave it, depending on the metadata hash.
+
+    Returns `create`, `update` or `unchanged`. On create and update the view is replaced and the tags and
+    column comments are copied from Gold again; tags that are no longer on the Gold table are removed.
     """
-    from . import dq  # imported here so the module can be tested without Spark
+    action = view_action(spark, target_fqn, source_table_tags)
+    if action == UNCHANGED:
+        return action
 
-    treat = treat or {}
-    unknown = sorted(set(treat) - {c.name for c in plan.kept})
-    if unknown:
-        raise ValueError(f"'treat' for '{plan.table}' names column(s) {unknown} that are not kept in Platinum.")
-    kept = {c.name for c in plan.kept}
-    dropped_refs = sorted(checked_columns(checks) - kept)
-    if dropped_refs:
-        raise ValueError(
-            f"DQ rules for '{plan.table}' use column(s) {dropped_refs} that Platinum does not keep, so the "
-            f"gate cannot check them. Remove those rules, or keep the column in Platinum."
-        )
+    spark.sql(view_sql(plan, source_fqn, target_fqn))
 
-    out = spark.table(source_fqn).selectExpr(*[select_expr(c, treat) for c in plan.kept])
-    good = dq.quality_gate(
-        spark, plan.table, out, checks, quarantine_fqn, "gold_to_platinum", gate_log=gate_log,
-        notify=None if notify is None else {**notify, "gate_log_fqn": getattr(gate_log, "fqn", None)},
-    )
-    if good.isEmpty():
-        raise ValueError(f"No row of {source_fqn} passed the DQ gate; {target_fqn} was left unchanged.")
-    good.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_fqn)
-
-    # Table tags: carry the Gold tags over, but not the gate tag itself, and record provenance.
+    # Table tags: Gold's tags, except the ones not copied, plus where the view came from.
     tags = {k: v for k, v in source_table_tags.items() if k not in NOT_COPIED_TAGS}
     tags["promoted_from"] = source_fqn
-    pairs = ", ".join(f"'{_esc(k)}' = '{_esc(str(v))}'" for k, v in tags.items())
-    spark.sql(f"ALTER TABLE {target_fqn} SET TAGS ({pairs})")
-
-    comments = {c["name"]: c["comment"] for c in source_columns}
-    for col in plan.kept:
-        if comments.get(col.name):
-            spark.sql(f"ALTER TABLE {target_fqn} ALTER COLUMN `{col.name}` COMMENT '{_esc(comments[col.name])}'")
-        # Same sensitivity tag as Gold, so masks and policies written by tag match Platinum too.
-        if col.sensitivity:
-            spark.sql(
-                f"ALTER TABLE {target_fqn} ALTER COLUMN `{col.name}` "
-                f"SET TAGS ('{SENSITIVITY_TAG}' = '{_esc(col.sensitivity)}')"
-            )
-    return spark.table(target_fqn).count()
-
-
-# ── Publish as a view ──────────────────────────────────────────────────────
-# `publish_as = view`: Platinum is a view over Gold instead of a copied table. The DQ rules become the
-# view's WHERE clause, and the rows that fail them are exposed by a second (quarantine) view.
-
-def rule_condition(rule: dict) -> str:
-    """SQL condition that is TRUE for a passing row, written from one DQX rule.
-
-    Only row-level functions can be a view filter. A NULL result counts as a failure.
-    """
-    check = rule.get("check") or {}
-    function = check.get("function")
-    args = check.get("arguments") or {}
-    col = f"`{args['column']}`" if isinstance(args.get("column"), str) else None
-    if function == "is_not_null" and col:
-        return f"{col} IS NOT NULL"
-    if function == "is_not_null_and_not_empty" and col:
-        return f"({col} IS NOT NULL AND trim(cast({col} as string)) <> '')"
-    if function == "is_in_list" and col:
-        # DQX metadata: a quoted entry is a literal value.
-        return f"{col} IN ({', '.join(str(v) for v in args['allowed'])})"
-    if function == "regex_match" and col:
-        cond = f"{col} RLIKE '{_esc(args['regex'])}'"
-        return f"NOT ({cond})" if args.get("negate") else cond
-    if function == "sql_expression":
-        return f"({args['expression']})"
-    raise ValueError(
-        f"DQ rule '{rule.get('name')}' uses '{function}', which cannot be written as a view filter. "
-        f"Use is_not_null, is_not_null_and_not_empty, is_in_list, regex_match or sql_expression, "
-        f"or publish this table as a table."
-    )
-
-
-def _validate_for_publish(plan: TablePlan, treat: Dict[str, str], checks: List[dict]) -> None:
-    unknown = sorted(set(treat) - {c.name for c in plan.kept})
-    if unknown:
-        raise ValueError(f"'treat' for '{plan.table}' names column(s) {unknown} that are not kept in Platinum.")
-    dropped_refs = sorted(checked_columns(checks) - {c.name for c in plan.kept})
-    if dropped_refs:
-        raise ValueError(
-            f"DQ rules for '{plan.table}' use column(s) {dropped_refs} that Platinum does not keep, so the "
-            f"gate cannot check them. Remove those rules, or keep the column in Platinum."
-        )
-
-
-def publish_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
-                 source_columns: List[dict], source_table_tags: Dict[str, str],
-                 checks: List[dict], quarantine_fqn: str, gate_log=None,
-                 treat: Optional[Dict[str, str]] = None, notify: Optional[Dict] = None) -> int:
-    """Create or replace the Platinum view and the quarantine view. Returns the rows the view exposes.
-
-    The view is `SELECT <kept columns, masks applied> FROM <gold> WHERE <every rule passes>`. The rules
-    run on the handled values, as in the table gate, so the handled columns are selected in a subquery
-    first. The counts for the gate log are taken from Gold at this moment. If no row passes, the
-    existing view is left as it is.
-    """
-    treat = treat or {}
-    _validate_for_publish(plan, treat, checks)
-
-    inner = f"SELECT {', '.join(select_expr(c, treat) for c in plan.kept)} FROM {source_fqn}"
-    conds = [(r["name"], rule_condition(r)) for r in checks]
-    passes = " AND ".join(f"coalesce({c}, false)" for _, c in conds)
-
-    # One pass over Gold for the counts: rows, rows failing any rule, and rows failing each rule.
-    per_rule = ", ".join(
-        f"sum(CASE WHEN NOT coalesce({c}, false) THEN 1 ELSE 0 END) AS r{i}" for i, (_, c) in enumerate(conds)
-    )
-    counts = spark.sql(
-        f"SELECT count(*) AS total, sum(CASE WHEN NOT ({passes}) THEN 1 ELSE 0 END) AS bad, {per_rule} "
-        f"FROM ({inner})"
-    ).collect()[0]
-    total, bad = int(counts["total"] or 0), int(counts["bad"] or 0)
-    passed = total - bad
-    failed_rules = {name: int(counts[f"r{i}"] or 0) for i, (name, _) in enumerate(conds) if counts[f"r{i}"]}
-    if gate_log:
-        gate_log.log(plan.table, "gold_to_platinum", total, passed, bad, failed_rules, quarantine_fqn)
-        if notify is not None:
-            from . import dq_email
-            try:
-                dq_email.notify_gate(
-                    spark, notify["dbutils"], layer=notify["layer"], entity=plan.table, label="gold_to_platinum",
-                    job_id=None, run_id=job_value_run(spark), n_good=passed, n_bad=bad, failed_rules=failed_rules,
-                    bad_df=None, quarantine_fqn=quarantine_fqn, gate_log_fqn=getattr(gate_log, "fqn", None),
-                    notify_team=notify.get("team"),
-                )
-            except Exception as e:
-                print(f"DQ email skipped ({type(e).__name__}): {str(e)[:200]}")
-    if passed == 0:
-        raise ValueError(f"No row of {source_fqn} passes the DQ rules; {target_fqn} was left unchanged.")
-
-    spark.sql(f"CREATE OR REPLACE VIEW {target_fqn} AS SELECT * FROM ({inner}) WHERE {passes}")
-    failed_names = ", ".join(f"CASE WHEN NOT coalesce({c}, false) THEN '{_esc(n)}' END" for n, c in conds)
-    spark.sql(
-        f"CREATE OR REPLACE VIEW {quarantine_fqn} AS "
-        f"SELECT *, filter(array({failed_names}), x -> x IS NOT NULL) AS _dq_failed_rules "
-        f"FROM ({inner}) WHERE NOT ({passes})"
-    )
-
-    # Tags and comments on the view (a view does not inherit them from Gold).
-    tags = {k: v for k, v in source_table_tags.items() if k not in NOT_COPIED_TAGS}
-    tags["promoted_from"] = source_fqn
+    catalog, schema, table = target_fqn.split(".")
+    stale = sorted(set(read_table_tags(spark, catalog, schema, table)) - set(tags))
+    if stale:
+        spark.sql(f"ALTER VIEW {target_fqn} UNSET TAGS ({', '.join(repr(k) for k in stale)})")
     pairs = ", ".join(f"'{_esc(k)}' = '{_esc(str(v))}'" for k, v in tags.items())
     spark.sql(f"ALTER VIEW {target_fqn} SET TAGS ({pairs})")
+
+    # Column comments and the sensitivity tag (a view does not inherit them from Gold).
     comments = {c["name"]: c["comment"] for c in source_columns}
     for col in plan.kept:
         if comments.get(col.name):
@@ -354,10 +220,4 @@ def publish_view(spark, plan: TablePlan, source_fqn: str, target_fqn: str,
                 f"ALTER TABLE {target_fqn} ALTER COLUMN `{col.name}` "
                 f"SET TAGS ('{SENSITIVITY_TAG}' = '{_esc(col.sensitivity)}')"
             )
-    return passed
-
-
-def job_value_run(spark):
-    """The job run id for the email subject, or None when not running as a job."""
-    from .job_context import job_value
-    return job_value(spark, "spark.databricks.job.runId", "job_run_id")
+    return action
