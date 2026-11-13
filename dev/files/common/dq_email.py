@@ -133,18 +133,25 @@ def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: 
              f'run {html.escape(run_id)}: {result}</p>')
 
     # 1) summary first, 2) then, when records were rejected, how to see them and a big link to the quarantine table
+    # Every email carries the same detail block: how to see more detail, and a big link to the quarantine table.
     detail, detail_text = "", ""
-    if n_bad and quarantine_fqn:
+    if quarantine_fqn:
         q_url = base + quarantine_fqn.replace(".", "/")
-        detail = (f'<p style="font-size:14px">If you want to see more detail, open the quarantine table and filter '
-                  f'<b>_dq_job_run_id = {html.escape(run_id)}</b>.</p>'
-                  f'<p style="font-size:20px;font-weight:bold;margin:8px 0 16px"><a href="{q_url}">'
+        try:
+            q_exists = spark.catalog.tableExists(quarantine_fqn)
+        except Exception:
+            q_exists = True
+        note = "" if q_exists else (" This table is created when the first record is rejected, so the link will "
+                                    "not open until then.")
+        detail = (f'<p style="font-size:15px">If you want to see more detail, open the quarantine table and filter '
+                  f'<b>_dq_job_run_id = {html.escape(run_id)}</b>.{html.escape(note)}</p>'
+                  f'<p style="font-size:24px;font-weight:bold;margin:10px 0 20px"><a href="{q_url}">'
                   f'Open the {html.escape(layer)} quarantine table</a></p>')
         detail_text = (f"\nIf you want to see more detail, open the quarantine table and filter "
-                       f"_dq_job_run_id = {run_id}:\n{q_url}\n")
+                       f"_dq_job_run_id = {run_id}.{note}\n{q_url}\n")
     history = ""
     if gate_log_fqn:
-        history = (f'<p style="font-size:12px;color:#6b7280">Summary of all runs: '
+        history = (f'<p style="font-size:14px">Summary of all runs: '
                    f'<a href="{base}{gate_log_fqn.replace(".", "/")}">dq_gate_log</a></p>')
     signoff = f'<p style="font-size:14px">Thanks and regards,<br>{html.escape(EMAIL["signature"])}</p>'
 
