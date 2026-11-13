@@ -143,9 +143,9 @@ def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: 
             q_exists = True
         note = "" if q_exists else (" This table is created when the first record is rejected, so the link will "
                                     "not open until then.")
-        detail = (f'<p style="font-size:15px">If you want to see more detail, open the quarantine table and filter '
+        detail = (f'<p style="font-size:14px">If you want to see more detail, open the quarantine table and filter '
                   f'<b>_dq_job_run_id = {html.escape(run_id)}</b>.{html.escape(note)}</p>'
-                  f'<p style="font-size:24px;font-weight:bold;margin:10px 0 20px"><a href="{q_url}">'
+                  f'<p style="font-size:16px;font-weight:bold;margin:8px 0 16px"><a href="{q_url}">'
                   f'Open the {html.escape(layer)} quarantine table</a></p>')
         detail_text = (f"\nIf you want to see more detail, open the quarantine table and filter "
                        f"_dq_job_run_id = {run_id}.{note}\n{q_url}\n")
