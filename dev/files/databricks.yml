@@ -49,6 +49,23 @@ variables:
       Schema the Platinum publish job writes to (ADP-1026). A manual test schema in
       dev_platinum_catalog, not managed by Terraform.
     default: ad_rls_testing_platinum
+  audit_schema:
+    description: Audit schema holding the Silver and Gold dq_gate_log and audit_log (config_loader SCHEMAS['audit']).
+    default: e2e_medallion_metadata_v2_audit
+  formatted_exception_schema:
+    description: Silver quarantine schema; the Silver DQ alert samples quarantined records from it (config_loader SCHEMAS['formatted_exception']).
+    default: e2e_medallion_metadata_v2_formatted_exception
+  published_exception_schema:
+    description: Gold quarantine schema, linked from the DQ summary email (config_loader SCHEMAS['published_exception']).
+    default: e2e_medallion_metadata_v2_published_exception
+  team_name:
+    description: Squad key for the DQ run emails (a key in TEAMS in common/dq_email.py).
+    default: rls_testing
+  environment:
+    description: Environment label in the email subject (dev, sim, prd). Set per target below.
+    default: dev
+  warehouse_id:
+    description: SQL warehouse the DQ failure alert runs its query on. Set per target below.
 
 include:
   - resources/jobs/*.yml
@@ -59,6 +76,8 @@ targets:
     workspace:
       host: https://dbc-445a81b8-2855.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
+    variables:
+      warehouse_id: adb090f2a817666b   # Serverless Starter Warehouse (ADI)
 
   # Dev workspace (dbc-13eada50-8f08, CLI profile `dev`). Uses UC managed tables
   # so the audit table does not depend on leftover S3 files from earlier runs.
@@ -68,3 +87,4 @@ targets:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev-workspace
     variables:
       use_external_tables: "false"
+      warehouse_id: 4cfe5f4dc76c52de   # dev-serverless-warehouse (ad workspace)

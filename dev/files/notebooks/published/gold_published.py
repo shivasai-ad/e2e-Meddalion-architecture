@@ -65,7 +65,7 @@ from common.config_loader import (
     get_fqn,
     get_s3_bucket,
 )
-from common import ddl, audit_log, control, schema_audit, cdf, dq, dq_gate_log, job_context
+from common import ddl, audit_log, control, schema_audit, cdf, dq, dq_gate_log, job_context, dq_email
 from common.gold_compliance_validator import (
     load_compliance_config,
     compute_config_hash,
@@ -81,6 +81,9 @@ ENTITY = dbutils.widgets.get("entity").strip()
 for _name in ("job_id", "job_run_id", "task_run_id", "task_key"):
     dbutils.widgets.text(_name, "")  # set by the job (base_parameters), for the audit logs
 job_context.set_from_widgets(dbutils)
+dbutils.widgets.text("environment", "dev", label="Environment (email subject)")
+dbutils.widgets.text("team_name", "rls_testing", label="Squad key (email)")
+dq_email.configure(dbutils.widgets.get("environment").strip(), dbutils.widgets.get("team_name").strip())
 
 # Constants
 CATALOG = get_catalog()
@@ -387,6 +390,7 @@ def _bootstrap_gold_table(
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="bootstrap (Silver)",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Gold", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")
@@ -577,6 +581,7 @@ def _incremental_gold_merge(
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label="incremental (Silver CDF)",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Gold", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules file for '{entity}' — skipping DQ gate")
@@ -716,6 +721,7 @@ def process_derived_gold_table(spark, catalog: str, entity: str, schemas: Dict) 
             quarantine_fqn=f"{catalog}.{schemas['published_exception']}.{entity}_quarantine",
             label=f"derived ({cfg['kind']})",
             gate_log=dq_gate_log.DqGateLogger(spark, catalog, schemas["audit"], "gold", f"{catalog}.{schemas['gold']}.{entity}", USE_EXTERNAL, AUDIT_BUCKET),
+            notify={"layer": "Gold", "dbutils": dbutils},
         )
     else:
         print(f"ℹ No DQ rules for '{entity}' in silver_to_gold.yml — skipping DQ gate")

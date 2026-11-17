@@ -27,6 +27,8 @@ resources:
           notebook_task:
             notebook_path: ${workspace.file_path}/notebooks/formatted_stg/bronze
             base_parameters:
+              environment: ${var.environment}
+              team_name: ${var.team_name}
               entity: "{{job.parameters.entity}}"
               job_id: "{{job.id}}"
               job_run_id: "{{job.run_id}}"
@@ -41,6 +43,8 @@ resources:
           notebook_task:
             notebook_path: ${workspace.file_path}/notebooks/formatted/silver
             base_parameters:
+              environment: ${var.environment}
+              team_name: ${var.team_name}
               entity: "{{job.parameters.entity}}"
               job_id: "{{job.id}}"
               job_run_id: "{{job.run_id}}"
@@ -55,6 +59,8 @@ resources:
           notebook_task:
             notebook_path: ${workspace.file_path}/notebooks/published/gold_published
             base_parameters:
+              environment: ${var.environment}
+              team_name: ${var.team_name}
               entity: "{{job.parameters.entity}}"
               job_id: "{{job.id}}"
               job_run_id: "{{job.run_id}}"
