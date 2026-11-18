@@ -36,7 +36,6 @@ Column rule (`decide_column` in `common/platinum.py`):
 | `confidential` | yes |
 | `internal` | no |
 | `restricted` | no (not exposed; no masking rule is agreed) |
-| no tag, or `pii = true` | no (default deny) |
 
 ## 3. The run, step by step
 
@@ -101,7 +100,7 @@ databricks bundle run e2e_platinum_publish --params entity=<table> -t dev -p dev
 - **No cleanup.** A view whose Gold table is no longer tagged stays and keeps serving data.
 - **No data filtering.** Every Gold row is visible, including rows that fail Gold's own rules.
 - **`restricted` columns are never shown.** Masking them (last 4 characters) was removed to keep this simple.
-- **PII.** Nobody signs off per column yet, and no `pii` tag exists in Gold. A personal column tagged `confidential` is in the view.
+- **Personal data is not checked.** Nothing in Platinum reads a PII flag. A personal column with sensitivity `public` or `confidential` is in the view.
 - **Live reads.** Each query on a view reads Gold, so cost grows with Gold's size and the number of queries. A view also
   shows Gold as it is during a Gold refresh.
 - **Not tested:** reading the view from an account that has access to the view but not to Gold, and attaching row filters or
