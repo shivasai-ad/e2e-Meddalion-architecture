@@ -7,7 +7,7 @@
 # MAGIC
 # MAGIC - **Table gate:** a Gold table gets a view only if its `table_type` tag is `platinum`.
 # MAGIC - **Column rule:** each column's `sensitivity` tag decides whether the column is in the view
-# MAGIC   (`public` and `confidential` are; `internal`, `restricted`, untagged and `pii = true` are not).
+# MAGIC   (`public` and `confidential` are; `internal`, `restricted` and anything else are not).
 # MAGIC   See `common/platinum.py`.
 # MAGIC
 # MAGIC There is no data filtering and no DQ in Platinum: the view shows every row of Gold, live.

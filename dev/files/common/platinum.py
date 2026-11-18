@@ -11,8 +11,6 @@ filtering and no DQ here. Two tag-based decisions, nothing else:
         confidential  -> in the view
         internal      -> left out (a client never sees it)
         restricted    -> left out (not exposed; no masking rule is agreed yet)
-        no tag        -> left out (default-deny)
-        pii = 'true'  -> left out (held back until someone signs it off)
 
 The view is `SELECT <kept columns> FROM <gold table>`: every row of Gold, live. It is created the first
 time. On every later run the job compares the `metadata_hash` tag of the Gold table with the one on the
@@ -29,7 +27,6 @@ from typing import Dict, List, Optional
 TABLE_GATE_TAG = "table_type"
 TABLE_GATE_VALUE = "platinum"
 SENSITIVITY_TAG = "sensitivity"
-PII_TAG = "pii"
 HASH_TAG = "metadata_hash"
 
 # Gold tags that are not copied to Platinum: the gate tag itself, and the hash written by the older
@@ -44,13 +41,9 @@ UPDATE = "update"
 UNCHANGED = "unchanged"
 
 
-def decide_column(sensitivity: Optional[str], pii: Optional[str] = None) -> tuple:
+def decide_column(sensitivity: Optional[str]) -> tuple:
     """Return (treatment, reason) for one Gold column."""
-    if not sensitivity:
-        return OMIT, "no sensitivity tag"
-    sensitivity = sensitivity.strip().lower()
-    if str(pii or "").strip().lower() == "true":
-        return OMIT, "pii column, not signed off"
+    sensitivity = (sensitivity or "").strip().lower()
     if sensitivity in ("public", "confidential"):
         return INCLUDE, sensitivity
     if sensitivity == "internal":
@@ -90,7 +83,7 @@ def build_plan(table: str, table_tags: Dict[str, str], columns: List[dict],
     plan = TablePlan(table, True, "tagged for Platinum")
     for col in columns:
         tags = column_tags.get(col["name"], {})
-        treatment, reason = decide_column(tags.get(SENSITIVITY_TAG), tags.get(PII_TAG))
+        treatment, reason = decide_column(tags.get(SENSITIVITY_TAG))
         plan.columns.append(
             ColumnPlan(col["name"], col["data_type"], tags.get(SENSITIVITY_TAG), treatment, reason)
         )
