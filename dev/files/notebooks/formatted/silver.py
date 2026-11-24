@@ -479,19 +479,23 @@ for _audit_table in ("audit_log", "job_flags", "schema_audit_log"):
 
 # Process each entity
 results = {}
-for entity in ENTITIES:
-    print(f"\n{'='*70}")
-    print(f"Processing Silver for entity: {entity}")
-    print(f"{'='*70}")
+try:
+    for entity in ENTITIES:
+        print(f"\n{'='*70}")
+        print(f"Processing Silver for entity: {entity}")
+        print(f"{'='*70}")
 
-    actual_key, entity_config = get_config_entity(entity, SILVER_CONFIG["tables"])
-    if not entity_config:
-        print(f"WARNING: Entity '{entity}' has no config in silver_config.yml")
-        continue
+        actual_key, entity_config = get_config_entity(entity, SILVER_CONFIG["tables"])
+        if not entity_config:
+            print(f"WARNING: Entity '{entity}' has no config in silver_config.yml")
+            continue
 
-    result = process_silver_entity(spark, CATALOG, entity, entity_config, schemas)
-    results[entity] = result
-    print(f"Result: {result}")
+        result = process_silver_entity(spark, CATALOG, entity, entity_config, schemas)
+        results[entity] = result
+        print(f"Result: {result}")
+finally:
+    # ONE email for the whole layer, also when a later table failed after earlier gates ran
+    dq.send_layer_email(spark, dbutils, "Silver")
 
 print(f"\n{'='*70}")
 print(f"Silver Processing Complete")
