@@ -1,7 +1,8 @@
-"""DQ run email: a summary table and the rejected records of one layer's run, sent over SMTP.
+"""DQ run email: ONE email per layer per run, sent over SMTP.
 
-Used by the Silver and Gold gates right after they log their result. Off unless
-`enabled` is true, and it never raises: a failed email is logged and the run continues.
+Each quality gate records its result with record_gate(). When the layer has gone through all its
+tables, the notebook calls send_layer_summary(), which sends one email with a row per table.
+Off unless `enabled` is true, and it never raises: a failed email is logged and the run continues.
 
 The SMTP password is NOT in this file. It is read from a Databricks secret scope:
     dbutils.secrets.get(scope, "smtp_password")
@@ -12,7 +13,6 @@ import smtplib
 from email.message import EmailMessage
 from typing import Dict, List, Optional
 
-MAX_RECORDS = 50
 
 # Settings. Enabled only when a run should send mail. The password is never here: it is read from
 # the Databricks secret scope below.
@@ -43,11 +43,14 @@ def configure(environment: str, team_key: str) -> None:
         EMAIL["team"] = team_key
 
 
-INTERNAL_PREFIXES = ("_",)  # quarantine bookkeeping columns, not shown in the email
+class _Html(str):
+    """A cell that is already HTML (a link). Everything else is escaped."""
 
 
 def _cell(value) -> str:
-    return "" if value is None else html.escape(str(value))
+    if value is None:
+        return ""
+    return str(value) if isinstance(value, _Html) else html.escape(str(value))
 
 
 def _table(headers: List[str], rows: List[List], widths: Optional[List[int]] = None) -> str:
@@ -60,29 +63,6 @@ def _table(headers: List[str], rows: List[List], widths: Optional[List[int]] = N
         ) + "</tr>"
     return (f'<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;width:100%">'
             f"<tr>{head}</tr>{body}</table>")
-
-
-def build_html(layer: str, run_id: str, run_time: str, summary: Dict, records: List[Dict],
-               record_columns: List[str], rule_text: Dict[str, str]) -> str:
-    """HTML for one layer's run. `records` are already limited to MAX_RECORDS by the caller."""
-    failed = ", ".join(f"{rule_text.get(k, k)} ({v})" for k, v in summary["failed_rules"].items()) or "none"
-    status = "All checks passed" if summary["quarantined"] == 0 else f'{summary["quarantined"]} record(s) rejected'
-    parts = [
-        '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937">',
-        "<h3 style=\"margin:16px 0 6px\">Summary</h3>",
-        _table(["Layer", "Entity", "Checked", "Passed", "Rejected", "What was wrong", "Run ID"],
-               [[layer, summary["entity"], summary["checked"], summary["passed"], summary["quarantined"], failed, run_id]]),
-    ]
-    if records:
-        parts += [
-            f"<h3 style=\"margin:16px 0 6px\">Rejected records ({summary['quarantined']})</h3>",
-            _table(record_columns, [[r.get(c) for c in record_columns] for r in records]),
-        ]
-        if summary["quarantined"] > len(records):
-            parts.append(f'<p>Showing the first {len(records)} of {summary["quarantined"]} rejected records. '
-                         f"The rest are in the {_cell(layer)} quarantine table for this run.</p>")
-    parts.append("</div>")
-    return "".join(parts)
 
 
 def send(spark_secrets, *, enabled: bool, scope: str, host: str, port: int, sender: str,
@@ -112,52 +92,93 @@ def send(spark_secrets, *, enabled: bool, scope: str, host: str, port: int, send
         return False
 
 
-def notify_gate(spark, dbutils, *, layer: str, entity: str, label: str, job_id: Optional[str],
-                run_id: Optional[str], n_good: int, n_bad: int, failed_rules: Dict[str, int],
-                bad_df=None, quarantine_fqn: Optional[str] = None,
-                gate_log_fqn: Optional[str] = None, notify_team: Optional[str] = None) -> bool:
-    """One email for one gate run: the summary, then the rejected records of this run (up to MAX_RECORDS)."""
+# Results of the gates of this run, in the order they ran. Filled by record_gate(), emptied by send_layer_summary().
+RESULTS: List[Dict] = []
+
+
+def record_gate(*, layer: str, entity: str, label: str, n_good: int, n_bad: int, failed_rules: Dict[str, int],
+                quarantine_fqn: Optional[str] = None, gate_log_fqn: Optional[str] = None) -> None:
+    """Keep one gate's result for the layer email. Sends nothing."""
+    RESULTS.append({"layer": layer, "entity": entity, "label": label, "n_good": n_good, "n_bad": n_bad,
+                    "failed_rules": failed_rules or {}, "quarantine_fqn": quarantine_fqn,
+                    "gate_log_fqn": gate_log_fqn})
+
+
+def send_layer_summary(dbutils, *, layer: str, job_id: Optional[str], run_id: Optional[str],
+                       notify_team: Optional[str] = None) -> bool:
+    """Send ONE email for this layer: a row per table that went through the gate, then how to see more detail.
+
+    The gate results of the layer are used up, so a second call in the same run sends nothing. Returns True when
+    an email was sent.
+    """
+    rows = [r for r in RESULTS if r["layer"] == layer]
+    RESULTS[:] = [r for r in RESULTS if r["layer"] != layer]
+    if not rows:
+        print(f"DQ email: no {layer} gate ran in this run, nothing to send.")
+        return False
+
     run_id = run_id or "unknown"
-    run_time = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d %H:%M")
     job_label = job_id or "unknown"
     team_key = notify_team or EMAIL["team"]
     team = TEAMS.get(team_key) or {"name": team_key, "recipients": []}
     subject = f"[{EMAIL['environment']}] {team['name']} {layer} DQ run result for run {run_id} (job {job_label})"
-    summary = {"entity": entity, "checked": n_good + n_bad, "passed": n_good, "quarantined": n_bad,
-               "failed_rules": failed_rules}
-    records, columns = [], []  # the email carries the summary only; the records are in the quarantine table
-    body = build_html(layer, run_id, run_time, summary, records, columns or ["Problem"], {})
-    base = EMAIL["workspace_url"].rstrip("/") + "/explore/data/"
-    result = "all checks passed." if n_bad == 0 else f"{n_bad} of {n_good + n_bad} record(s) rejected."
-    intro = (f'<p style="font-size:14px"><b>{html.escape(layer)} DQ run result</b>, job {html.escape(job_label)}, '
-             f'run {html.escape(run_id)}: {result}</p>')
 
-    # 1) summary first, 2) then, when records were rejected, how to see them and a big link to the quarantine table
-    # Every email carries the same detail block: how to see more detail, and a big link to the quarantine table.
-    detail, detail_text = "", ""
-    if quarantine_fqn:
-        q_url = base + quarantine_fqn.replace(".", "/")
-        try:
-            q_exists = spark.catalog.tableExists(quarantine_fqn)
-        except Exception:
-            q_exists = True
-        note = "" if q_exists else (" This table is created when the first record is rejected, so the link will "
-                                    "not open until then.")
-        detail = (f'<p style="font-size:14px">If you want to see more detail, open the quarantine table and filter '
-                  f'<b>_dq_job_run_id = {html.escape(run_id)}</b>.{html.escape(note)}</p>'
-                  f'<p style="font-size:16px;font-weight:bold;margin:8px 0 16px"><a href="{q_url}">'
-                  f'Open the {html.escape(layer)} quarantine table</a></p>')
-        detail_text = (f"\nIf you want to see more detail, open the quarantine table and filter "
-                       f"_dq_job_run_id = {run_id}.{note}\n{q_url}\n")
-    history = ""
-    if gate_log_fqn:
-        history = (f'<p style="font-size:14px">Summary of all runs: '
-                   f'<a href="{base}{gate_log_fqn.replace(".", "/")}">dq_gate_log</a></p>')
+    base = EMAIL["workspace_url"].rstrip("/") + "/explore/data/"
+    total_bad = sum(r["n_bad"] for r in rows)
+    with_rejects = [r for r in rows if r["n_bad"] > 0]
+    tables = f"{len(rows)} table{'s' if len(rows) != 1 else ''}"
+    result = (f"all checks passed for {tables}." if total_bad == 0
+              else f"{total_bad} record(s) rejected, in {len(with_rejects)} of {tables}.")
+
+    def rule_label(r, rule):
+        """The rule name without the table name in front: the Table column already says which table."""
+        prefix = f"{r['entity']}_"
+        return rule[len(prefix):] if rule.startswith(prefix) and len(rule) > len(prefix) else rule
+
+    def failed_text(r):
+        return ", ".join(f"{rule_label(r, k)} ({v})" for k, v in r["failed_rules"].items()) or "none"
+
+    def q_url(r):
+        return base + r["quarantine_fqn"].replace(".", "/")
+
+    def name_cell(r):
+        """The table name; a link to its quarantine table when it has rejected rows."""
+        if r["n_bad"] > 0 and r["quarantine_fqn"]:
+            return _Html(f'<a href="{q_url(r)}">{html.escape(r["entity"])}</a>')
+        return r["entity"]
+
+    table_rows = [[name_cell(r), r["n_good"] + r["n_bad"], r["n_good"], r["n_bad"], failed_text(r)] for r in rows]
+
+    intro = (f'<p style="font-size:14px"><b>{html.escape(layer)} DQ run result</b>, job {html.escape(job_label)}, '
+             f"run {html.escape(run_id)}: {html.escape(result)}</p>")
+    summary = ('<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937">'
+               '<h3 style="margin:16px 0 6px">Summary</h3>'
+               + _table(["Table", "Checked", "Passed", "Rejected", "What was wrong"], table_rows)
+               + "</div>")
+
+    hint = " (click the table name above)" if with_rejects else ""
+    detail = (f'<p style="font-size:14px">If you want to see more detail, open the quarantine table{hint} and filter '
+              f"<b>_dq_job_run_id = {html.escape(run_id)}</b>.</p>")
+    detail_text = (f"\nIf you want to see more detail, open the quarantine table and filter "
+                   f"_dq_job_run_id = {run_id}.\n")
+    if with_rejects:
+        for r in with_rejects:
+            if r["quarantine_fqn"]:
+                detail_text += f"{r['entity']}: {q_url(r)}\n"
+    else:
+        detail += ('<p style="font-size:14px">No record was rejected in this run, so no quarantine table was '
+                   "written.</p>")
+        detail_text += "No record was rejected in this run, so no quarantine table was written.\n"
+
+    gate_log_fqn = next((r["gate_log_fqn"] for r in rows if r["gate_log_fqn"]), None)
+    history = (f'<p style="font-size:14px">Summary of all runs: '
+               f'<a href="{base}{gate_log_fqn.replace(".", "/")}">dq_gate_log</a></p>') if gate_log_fqn else ""
     signoff = f'<p style="font-size:14px">Thanks and regards,<br>{html.escape(EMAIL["signature"])}</p>'
 
-    body = intro + body + detail + history + signoff
-    text = (f"{layer} DQ run result, job {job_label}, run {run_id}: {result}\n"
-            f"Checked {n_good + n_bad}, passed {n_good}, rejected {n_bad}.\n{detail_text}\n"
+    body = intro + summary + detail + history + signoff
+    lines = "\n".join(f"  {r['entity']}: checked {r['n_good'] + r['n_bad']}, passed {r['n_good']}, "
+                      f"rejected {r['n_bad']} ({failed_text(r)})" for r in rows)
+    text = (f"{layer} DQ run result, job {job_label}, run {run_id}: {result}\n{lines}\n{detail_text}\n"
             f"Thanks and regards,\n{EMAIL['signature']}")
     return send(dbutils.secrets, enabled=EMAIL["enabled"], scope=EMAIL["scope"], host=EMAIL["host"],
                 port=EMAIL["port"], sender=EMAIL["sender"], recipients=team["recipients"],

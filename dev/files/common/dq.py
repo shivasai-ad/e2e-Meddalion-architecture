@@ -144,18 +144,28 @@ def _with_log(notify, gate_log):
 
 
 def _notify(spark, entity, label, n_good, n_bad, failed_rules, bad_df, quarantine_fqn, notify):
-    """Send the run email when the caller asked for one. Never stops the data run."""
+    """Keep this gate's result for the layer email (see send_layer_email). Sends nothing itself."""
     if not notify:
         return
     from . import dq_email
     try:
-        dq_email.notify_gate(
-            spark, notify["dbutils"], layer=notify["layer"], entity=entity, label=label,
-            gate_log_fqn=notify.get("gate_log_fqn"), notify_team=notify.get("team"),
+        dq_email.record_gate(
+            layer=notify["layer"], entity=entity, label=label, n_good=n_good, n_bad=n_bad,
+            failed_rules=failed_rules, quarantine_fqn=quarantine_fqn, gate_log_fqn=notify.get("gate_log_fqn"),
+        )
+    except Exception as e:
+        print(f"DQ email result not kept ({type(e).__name__}): {str(e)[:200]}")
+
+
+def send_layer_email(spark, dbutils, layer: str, notify_team: Optional[str] = None) -> bool:
+    """Send the ONE email for a layer's run, after all its tables went through the gate. Never stops the run."""
+    from . import dq_email
+    try:
+        return dq_email.send_layer_summary(
+            dbutils, layer=layer, notify_team=notify_team,
             job_id=job_value(spark, "spark.databricks.job.id", "job_id"),
             run_id=job_value(spark, "spark.databricks.job.runId", "job_run_id"),
-            n_good=n_good, n_bad=n_bad, failed_rules=failed_rules,
-            bad_df=bad_df, quarantine_fqn=quarantine_fqn,
         )
     except Exception as e:
         print(f"DQ email skipped ({type(e).__name__}): {str(e)[:200]}")
+        return False

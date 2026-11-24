@@ -760,44 +760,48 @@ def process_derived_gold_table(spark, catalog: str, entity: str, schemas: Dict) 
 
 # Process each entity
 results = {}
-for entity in ENTITIES:
-    print(f"\n{'='*70}")
-    print(f"Processing Gold for entity: {entity}")
-    print(f"{'='*70}")
+try:
+    for entity in ENTITIES:
+        print(f"\n{'='*70}")
+        print(f"Processing Gold for entity: {entity}")
+        print(f"{'='*70}")
 
-    actual_key, entity_compliance_entry = get_config_entity(entity, COMPLIANCE_CONFIG)
-    if not entity_compliance_entry:
-        print(f"⚠ Entity '{entity}' has no config in gold_compliance_metadata.yml")
-        continue
+        actual_key, entity_compliance_entry = get_config_entity(entity, COMPLIANCE_CONFIG)
+        if not entity_compliance_entry:
+            print(f"⚠ Entity '{entity}' has no config in gold_compliance_metadata.yml")
+            continue
 
-    if entity in DERIVED_TABLES:
-        result = process_derived_gold_table(spark, CATALOG, entity, schemas)
-    else:
-        result = process_gold_entity(spark, CATALOG, entity, schemas)
-    results[entity] = result
-    print(f"Result: {result}")
+        if entity in DERIVED_TABLES:
+            result = process_derived_gold_table(spark, CATALOG, entity, schemas)
+        else:
+            result = process_gold_entity(spark, CATALOG, entity, schemas)
+        results[entity] = result
+        print(f"Result: {result}")
 
-    # Schema validation: compare Gold's OWN schema against gold_compliance_metadata.yml's
-    # expected columns (config is source of truth). Validates that Gold was
-    # created/maintained correctly. Checked after the write, so schema changes
-    # are captured the same run they happen.
-    gold_fqn = get_fqn(entity, "gold")
-    gold_expected_cols = get_gold_columns(entity_compliance_entry)
-    gold_audit_names = [(name, col_type) for name, col_type, _ in AUDIT_COLUMNS]
+        # Schema validation: compare Gold's OWN schema against gold_compliance_metadata.yml's
+        # expected columns (config is source of truth). Validates that Gold was
+        # created/maintained correctly. Checked after the write, so schema changes
+        # are captured the same run they happen.
+        gold_fqn = get_fqn(entity, "gold")
+        gold_expected_cols = get_gold_columns(entity_compliance_entry)
+        gold_audit_names = [(name, col_type) for name, col_type, _ in AUDIT_COLUMNS]
 
-    schema_audit.detect_drift_against_config(
-        spark, CATALOG, schemas["audit"], gold_fqn, f"gold_{entity}",
-        gold_expected_cols + gold_audit_names,
-        ignored_columns=[],
-        use_external=USE_EXTERNAL, bucket=AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True
-    )
+        schema_audit.detect_drift_against_config(
+            spark, CATALOG, schemas["audit"], gold_fqn, f"gold_{entity}",
+            gold_expected_cols + gold_audit_names,
+            ignored_columns=[],
+            use_external=USE_EXTERNAL, bucket=AUDIT_BUCKET, halt_on_drop=True, halt_on_type_change=True
+        )
 
-    # Schema drift snapshot: track changes from previous run (for historical audit trail)
-    # Checked after the write, so schema changes are captured the same run they happen.
-    schema_audit.detect_and_log(
-        spark, CATALOG, schemas["audit"], gold_fqn, f"gold_{entity}",
-        USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=False  # Already halted above if critical
-    )
+        # Schema drift snapshot: track changes from previous run (for historical audit trail)
+        # Checked after the write, so schema changes are captured the same run they happen.
+        schema_audit.detect_and_log(
+            spark, CATALOG, schemas["audit"], gold_fqn, f"gold_{entity}",
+            USE_EXTERNAL, AUDIT_BUCKET, halt_on_drop=False  # Already halted above if critical
+        )
+finally:
+    # ONE email for the whole layer, also when a later table failed after earlier gates ran
+    dq.send_layer_email(spark, dbutils, "Gold")
 
 print(f"\n{'='*70}")
 print(f"Gold Processing Complete")
