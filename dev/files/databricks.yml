@@ -38,7 +38,7 @@ variables:
     default: rls_testing
   gold_source_schema:
     description: Gold schema the Platinum publish job reads from (ADP-1026).
-    default: ad_published
+    default: ad_rls_testing_published
   platinum_catalog:
     description: >-
       Catalog the Platinum publish job writes to: the platform-owned Platinum catalog
