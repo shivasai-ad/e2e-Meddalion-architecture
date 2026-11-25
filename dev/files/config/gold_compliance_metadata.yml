@@ -494,6 +494,7 @@ tables:
       data_owner: "Sales Operations"
       refresh_cadence: daily
       client_id: "default_client"
+      table_type: platinum   # Platinum publish job: this table gets a client view (ADP-1026)
     columns:
       order_id:
         type: STRING
