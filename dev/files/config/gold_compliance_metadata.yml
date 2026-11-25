@@ -767,6 +767,7 @@ tables:
       data_owner: "Portfolio Management"
       refresh_cadence: daily
       client_id: "default_client"
+      table_type: platinum   # Platinum publish job: this table gets a client view (ADP-1026)
     columns:
       entity_master_position_id:
         type: STRING
