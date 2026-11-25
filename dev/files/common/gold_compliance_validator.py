@@ -604,18 +604,6 @@ def apply_compliance_metadata(
         except Exception as e:
             errors.append(f"Failed to set table tags: {e}")
 
-    # ── Table type tag (optional) ──────────────────────────────────────────
-    # `table_type: platinum` in the config marks a Gold table for the Platinum publish job,
-    # which gives each such table a view with only the columns its sensitivity tags allow.
-    table_type = config_entry.get("table_type")
-    if table_type:
-        try:
-            spark.sql(f"ALTER TABLE {full_name} SET TAGS ('table_type' = '{table_type}')")
-            applied.append(f"table_type_tag ({table_type})")
-            logger.info(f"[{table_name}] Applied table_type tag: {table_type}")
-        except Exception as e:
-            errors.append(f"Failed to set table_type tag: {e}")
-
     # ── Column descriptions + tags ────────────────────────────────────────
     columns = config_entry.get("columns", {})
     cols_applied = 0
