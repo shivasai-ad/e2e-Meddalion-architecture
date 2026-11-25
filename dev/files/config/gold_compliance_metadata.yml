@@ -485,6 +485,7 @@ tables:
 
   orders:
     requires_compliance: true
+    table_type: platinum   # the Platinum publish job gives this table a client view (ADP-1026)
     description: "Order master data — order identifiers, customer information, status, and amounts"
     owner: "data-engineers"
     tags:
