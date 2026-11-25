@@ -4,9 +4,10 @@
 # - Creates the 5 schemas (stg, bronze, silver, gold, audit)
 # - Creates framework-owned audit tables (audit_log, job_flags, schema_audit_log)
 # - Creates staging tables (synthetic CDC source, CDF-enabled, no seed data)
+#   for every entity by default (entity=ALL), or for one entity with --params entity=<name>
 #
 # Must run before any medallion pipeline (Bronze/Silver/Gold).
-# Idempotent: safe to run multiple times.
+# Idempotent: safe to run multiple times. Only reset=true empties anything.
 
 resources:
   jobs:
@@ -17,6 +18,8 @@ resources:
       parameters:
         - name: reset
           default: "false"
+        - name: entity
+          default: "ALL"
 
       tasks:
         - task_key: setup_environment
@@ -34,7 +37,7 @@ resources:
           notebook_task:
             notebook_path: ${workspace.file_path}/notebooks/stg/staging
             base_parameters:
-              entity: "orders"
+              entity: "{{job.parameters.entity}}"
             source: WORKSPACE
           environment_key: serverless_env
 
